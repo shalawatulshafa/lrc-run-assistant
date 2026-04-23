@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import 'history_screen.dart';
+
+import '../models/run_session.dart';
+import '../services/run_history_storage.dart';
 import 'download_data_screen.dart';
-import 'connecting_screen.dart';
-import 'authority_check_screen.dart';
 import 'settings_screen.dart';
 
 class DashboardRunners extends StatefulWidget {
@@ -27,7 +25,7 @@ class DashboardRunners extends StatefulWidget {
 
 class DashboardRunnersState extends State<DashboardRunners> {
   int batteryLevel = 85;
-  Map<String, dynamic>? _latestRunData;
+  RunSession? _latestRunData;
   bool _isLoadingLatest = true;
   bool _hasNewData = false;
 
@@ -60,30 +58,14 @@ class DashboardRunnersState extends State<DashboardRunners> {
     });
 
     try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      List<String>? data = prefs.getStringList('runHistory');
+      final List<RunSession> runs = await RunHistoryStorage.getRuns();
 
-      debugPrint("Jumlah data di SharedPreferences: ${data?.length ?? 0}");
-
-      if (data != null && data.isNotEmpty) {
-        String lastItem = data.last;
-        Map<String, dynamic> lastRun = jsonDecode(lastItem);
-
-        debugPrint("Data terbaru: ${lastRun['title']}");
-
-        setState(() {
-          _latestRunData = lastRun;
-          _isLoadingLatest = false;
-        });
-      } else {
-        debugPrint("Tidak ada data history");
-        setState(() {
-          _latestRunData = null;
-          _isLoadingLatest = false;
-        });
-      }
+      setState(() {
+        _latestRunData = runs.isNotEmpty ? runs.last : null;
+        _isLoadingLatest = false;
+      });
     } catch (e) {
-      debugPrint("Error loading latest data: $e");
+      debugPrint('Error loading latest data: $e');
       setState(() {
         _isLoadingLatest = false;
       });
@@ -91,12 +73,10 @@ class DashboardRunnersState extends State<DashboardRunners> {
   }
 
   void refreshLatestData() {
-    debugPrint("refreshLatestData dipanggil");
     _loadLatestRunData();
   }
 
   void resetData() {
-    debugPrint("resetData dipanggil");
     setState(() {
       _latestRunData = null;
       _isLoadingLatest = false;
@@ -108,16 +88,14 @@ class DashboardRunnersState extends State<DashboardRunners> {
       _hasNewData = false;
     });
     refreshLatestData();
-    if (widget.onDataSaved != null) {
-      widget.onDataSaved!();
-    }
+    widget.onDataSaved?.call();
   }
 
   bool get canDownload => widget.isConnectedFromMain && _hasNewData;
 
   @override
   Widget build(BuildContext context) {
-    bool isConnected = widget.isConnectedFromMain;
+    final bool isConnected = widget.isConnectedFromMain;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -126,25 +104,25 @@ class DashboardRunnersState extends State<DashboardRunners> {
         elevation: 0,
         titleSpacing: 0,
         toolbarHeight: 60,
-        title: Padding(
-          padding: const EdgeInsets.only(left: 24, top: 16, bottom: 8),
+        title: const Padding(
+          padding: EdgeInsets.only(left: 24, top: 16, bottom: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                "Selamat Pagi,",
+                'Selamat Pagi,',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
-                  color: const Color.fromARGB(255, 165, 165, 165),
+                  color: Color.fromARGB(255, 165, 165, 165),
                 ),
               ),
               Text(
-                "Runners",
+                'Runners',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
-                  color: const Color.fromARGB(255, 165, 165, 165),
+                  color: Color.fromARGB(255, 165, 165, 165),
                 ),
               ),
             ],
@@ -155,24 +133,22 @@ class DashboardRunnersState extends State<DashboardRunners> {
             padding: const EdgeInsets.only(right: 8),
             child: IconButton(
               onPressed: () async {
-                final result = await Navigator.push(
+                await Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => SettingsScreen(
                       onDataDeleted: () {
                         resetData();
                         refreshLatestData();
-                        if (widget.onDataSaved != null) {
-                          widget.onDataSaved!();
-                        }
+                        widget.onDataSaved?.call();
                       },
                     ),
                   ),
                 );
               },
-              icon: Icon(
+              icon: const Icon(
                 Icons.settings,
-                color: const Color(0xFFF77226),
+                color: Color(0xFFF77226),
                 size: 30,
               ),
             ),
@@ -187,7 +163,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Banner
               Container(
                 height: 120,
                 width: double.infinity,
@@ -213,7 +188,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 alignment: Alignment.centerLeft,
                 padding: const EdgeInsets.all(20),
                 child: const Text(
-                  "Sudah olahraga\nhari ini?",
+                  'Sudah olahraga\nhari ini?',
                   style: TextStyle(
                     fontSize: 20,
                     color: Colors.white,
@@ -222,22 +197,16 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Card Info Status
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: isConnected
-                      ? (_hasNewData
-                            ? Colors.green.shade50
-                            : Colors.blue.shade50)
+                      ? (_hasNewData ? Colors.green.shade50 : Colors.blue.shade50)
                       : Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color: isConnected
-                        ? (_hasNewData
-                              ? Colors.green.shade200
-                              : Colors.blue.shade200)
+                        ? (_hasNewData ? Colors.green.shade200 : Colors.blue.shade200)
                         : Colors.orange.shade200,
                   ),
                 ),
@@ -245,13 +214,9 @@ class DashboardRunnersState extends State<DashboardRunners> {
                   children: [
                     Icon(
                       isConnected
-                          ? (_hasNewData
-                                ? Icons.check_circle
-                                : Icons.info_outline)
+                          ? (_hasNewData ? Icons.check_circle : Icons.info_outline)
                           : Icons.bluetooth_disabled,
-                      color: isConnected
-                          ? (_hasNewData ? Colors.green : Colors.blue)
-                          : Colors.orange,
+                      color: isConnected ? (_hasNewData ? Colors.green : Colors.blue) : Colors.orange,
                       size: 20,
                     ),
                     const SizedBox(width: 10),
@@ -259,15 +224,13 @@ class DashboardRunnersState extends State<DashboardRunners> {
                       child: Text(
                         isConnected
                             ? (_hasNewData
-                                  ? "Data lari siap diunduh!"
-                                  : "Tidak ada data baru. Silakan lari dulu.")
-                            : "Chest strap tidak terhubung. Klik tombol +",
+                                ? 'Data lari siap diunduh!'
+                                : 'Tidak ada data baru. Silakan lari dulu.')
+                            : 'Chest strap tidak terhubung. Klik tombol +',
                         style: TextStyle(
                           fontSize: 12,
                           color: isConnected
-                              ? (_hasNewData
-                                    ? Colors.green.shade800
-                                    : Colors.blue.shade800)
+                              ? (_hasNewData ? Colors.green.shade800 : Colors.blue.shade800)
                               : Colors.orange.shade800,
                         ),
                       ),
@@ -276,8 +239,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Tombol Unduh Data Lari
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -287,21 +248,14 @@ class DashboardRunnersState extends State<DashboardRunners> {
                             context,
                             MaterialPageRoute(
                               builder: (context) => DownloadDataScreen(
-                                onDataDownloaded: () {
-                                  markDataDownloaded();
-                                },
+                                onDataDownloaded: markDataDownloaded,
                               ),
                             ),
                           );
 
-                          debugPrint("Hasil download: $result");
-
                           if (result == true) {
-                            debugPrint("Refresh data setelah download");
                             await _loadLatestRunData();
-                            if (widget.onDataSaved != null) {
-                              widget.onDataSaved!();
-                            }
+                            widget.onDataSaved?.call();
                           }
                         }
                       : null,
@@ -311,19 +265,15 @@ class DashboardRunnersState extends State<DashboardRunners> {
                   ),
                   label: Text(
                     !isConnected
-                        ? "Koneksi tidak tersedia"
-                        : (!_hasNewData
-                              ? "Tidak ada data baru"
-                              : "Unduh Data Lari"),
+                        ? 'Koneksi tidak tersedia'
+                        : (!_hasNewData ? 'Tidak ada data baru' : 'Unduh Data Lari'),
                     style: TextStyle(
                       color: canDownload ? Colors.black87 : Colors.grey,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: canDownload
-                        ? const Color(0xFFF77226)
-                        : Colors.grey[300],
+                    backgroundColor: canDownload ? const Color(0xFFF77226) : Colors.grey[300],
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
@@ -332,8 +282,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Latest Run Data
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
@@ -350,7 +298,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              "Latest Run Data",
+                              'Latest Run Data',
                               style: TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
@@ -368,7 +316,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                                     ),
                                     const SizedBox(width: 5),
                                     Text(
-                                      _formatDate(_latestRunData!['date']),
+                                      _formatDate(_latestRunData!.date),
                                       style: TextStyle(
                                         color: Colors.grey[500],
                                         fontSize: 11,
@@ -381,25 +329,22 @@ class DashboardRunnersState extends State<DashboardRunners> {
                         ),
                         OutlinedButton(
                           onPressed: () {
-                            if (widget.onJumpToHistory != null) {
-                              widget.onJumpToHistory!();
-                            }
+                            widget.onJumpToHistory?.call();
                           },
-                          child: const Text(
-                            "History",
-                            style: TextStyle(color: Color(0xFFF77226)),
-                          ),
                           style: OutlinedButton.styleFrom(
                             side: const BorderSide(color: Color(0xFFF77226)),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(8),
                             ),
                           ),
+                          child: const Text(
+                            'History',
+                            style: TextStyle(color: Color(0xFFF77226)),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 15),
-
                     if (_isLoadingLatest)
                       const Center(
                         child: Padding(
@@ -421,7 +366,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                           const SizedBox(height: 20),
                           const Center(
                             child: Text(
-                              "Belum ada data lari",
+                              'Belum ada data lari',
                               style: TextStyle(
                                 color: Colors.grey,
                                 fontSize: 16,
@@ -432,7 +377,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                           const SizedBox(height: 8),
                           const Center(
                             child: Text(
-                              "Klik tombol Unduh Data Lari",
+                              'Klik tombol Unduh Data Lari',
                               style: TextStyle(
                                 color: Colors.grey,
                                 fontSize: 12,
@@ -450,19 +395,17 @@ class DashboardRunnersState extends State<DashboardRunners> {
                               Expanded(
                                 child: _buildStatBox(
                                   Icons.timer,
-                                  "Duration",
-                                  _latestRunData!['duration'] ?? "00:00",
+                                  'Duration',
+                                  _latestRunData!.duration,
                                 ),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _buildStatBox(
                                   Icons.location_on,
-                                  "Distance",
-                                  _formatDistance(
-                                    _latestRunData!['distance'] ?? 0,
-                                  ),
-                                  suffix: "km",
+                                  'Distance',
+                                  _latestRunData!.distanceLabel,
+                                  suffix: 'km',
                                 ),
                               ),
                             ],
@@ -473,17 +416,17 @@ class DashboardRunnersState extends State<DashboardRunners> {
                               Expanded(
                                 child: _buildStatBox(
                                   Icons.show_chart,
-                                  "Avg SPM",
-                                  "${_latestRunData!['avgSpm'] ?? 0}",
-                                  suffix: "steps/min",
+                                  'Avg SPM',
+                                  '${_latestRunData!.avgSpm}',
+                                  suffix: 'steps/min',
                                 ),
                               ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _buildStatBox(
                                   Icons.percent,
-                                  "Kepatuhan",
-                                  "${_latestRunData!['compliance'] ?? 0}%",
+                                  'Kepatuhan',
+                                  '${_latestRunData!.compliance}%',
                                 ),
                               ),
                             ],
@@ -494,15 +437,13 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // Status Card
               Row(
                 children: [
                   Expanded(
                     child: _buildStatusCard(
                       _buildBatteryIcon(isConnected ? batteryLevel : 0),
-                      "Baterai Chest Strap",
-                      isConnected ? "$batteryLevel%" : "-",
+                      'Baterai Chest Strap',
+                      isConnected ? '$batteryLevel%' : '-',
                       Colors.black,
                     ),
                   ),
@@ -510,14 +451,12 @@ class DashboardRunnersState extends State<DashboardRunners> {
                   Expanded(
                     child: _buildStatusCard(
                       Icon(
-                        isConnected
-                            ? Icons.bluetooth_connected
-                            : Icons.bluetooth_disabled,
+                        isConnected ? Icons.bluetooth_connected : Icons.bluetooth_disabled,
                         size: 30,
                         color: isConnected ? Colors.blue : Colors.black,
                       ),
-                      "Status Koneksi",
-                      isConnected ? "Connected" : "Not Connected",
+                      'Status Koneksi',
+                      isConnected ? 'Connected' : 'Not Connected',
                       isConnected ? Colors.blue : const Color(0xFF8B0000),
                     ),
                   ),
@@ -531,38 +470,24 @@ class DashboardRunnersState extends State<DashboardRunners> {
     );
   }
 
-  String _formatDistance(dynamic distance) {
-    if (distance is int) {
-      return distance.toString();
-    } else if (distance is double) {
-      return distance.toStringAsFixed(1);
-    }
-    return distance.toString();
-  }
-
-  String _formatDate(String dateString) {
-    try {
-      DateTime dateTime = DateTime.parse(dateString);
-      return "${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year}, ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}";
-    } catch (e) {
-      return dateString;
-    }
+  String _formatDate(DateTime dateTime) {
+    return '${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year}, ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   String _getMonthName(int month) {
     const months = [
-      "Januari",
-      "Februari",
-      "Maret",
-      "April",
-      "Mei",
-      "Juni",
-      "Juli",
-      "Agustus",
-      "September",
-      "Oktober",
-      "November",
-      "Desember",
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
     ];
     return months[month - 1];
   }
@@ -571,7 +496,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
     IconData icon,
     String title,
     String value, {
-    String suffix = "",
+    String suffix = '',
   }) {
     return Container(
       padding: const EdgeInsets.all(12),
@@ -606,7 +531,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
                 if (suffix.isNotEmpty)
                   TextSpan(
-                    text: " $suffix",
+                    text: ' $suffix',
                     style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                   ),
               ],

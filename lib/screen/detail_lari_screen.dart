@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+
+import '../models/run_session.dart';
+import '../services/run_history_storage.dart';
 
 class DetailLariScreen extends StatefulWidget {
-  final Map<String, dynamic>? runData;
-  final String? runTitle;
+  final RunSession? runSession;
   final String? runId;
   final VoidCallback? onDataUpdated;
 
   const DetailLariScreen({
-    super.key, 
-    this.runData, 
-    this.runTitle, 
+    super.key,
+    this.runSession,
     this.runId,
     this.onDataUpdated,
   });
@@ -21,8 +20,8 @@ class DetailLariScreen extends StatefulWidget {
 }
 
 class _DetailLariScreenState extends State<DetailLariScreen> {
-  String _currentTitle = "Sesi Lari"; // 🔥 LANGSUNG DIISI DEFAULT
-  Map<String, dynamic> _runData = {}; // 🔥 LANGSUNG DIISI DEFAULT
+  String _currentTitle = 'Sesi Lari';
+  RunSession? _runSession;
 
   @override
   void initState() {
@@ -31,46 +30,37 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   }
 
   void _initializeData() {
-    if (widget.runData != null) {
-      // Data baru dari download
-      _runData = Map.from(widget.runData!);
-      _currentTitle = widget.runTitle ?? "Sesi Lari";
+    if (widget.runSession != null) {
+      _runSession = widget.runSession;
+      _currentTitle = widget.runSession!.title;
     } else if (widget.runId != null) {
       _loadDataFromId(widget.runId!);
     }
   }
 
   Future<void> _loadDataFromId(String id) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String>? data = prefs.getStringList('runHistory');
-    
-    if (data != null && mounted) {
-      for (String item in data) {
-        Map<String, dynamic> run = jsonDecode(item);
-        if (run['id'] == id) {
-          setState(() {
-            _runData = run;
-            _currentTitle = run['title'] ?? "Sesi Lari";
-          });
-          break;
-        }
-      }
-    }
+    final RunSession? run = await RunHistoryStorage.getRunById(id);
+    if (!mounted || run == null) return;
+
+    setState(() {
+      _runSession = run;
+      _currentTitle = run.title;
+    });
   }
 
   Future<void> _editTitle() async {
-    TextEditingController titleController = TextEditingController(text: _currentTitle);
-    
+    final TextEditingController titleController = TextEditingController(text: _currentTitle);
+
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Edit Judul Aktivitas"),
+          title: const Text('Edit Judul Aktivitas'),
           content: TextField(
             controller: titleController,
             decoration: const InputDecoration(
-              labelText: "Judul",
-              hintText: "Masukkan judul aktivitas",
+              labelText: 'Judul',
+              hintText: 'Masukkan judul aktivitas',
               border: OutlineInputBorder(),
             ),
             autofocus: true,
@@ -79,30 +69,24 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Batal"),
+              child: const Text('Batal'),
             ),
             ElevatedButton(
               onPressed: () async {
-                String newTitle = titleController.text.trim();
+                final String newTitle = titleController.text.trim();
                 if (newTitle.isNotEmpty) {
-                  setState(() {
-                    _currentTitle = newTitle;
-                  });
                   await _updateTitleInStorage(newTitle);
-                  
-                  if (mounted && widget.onDataUpdated != null) {
-                    widget.onDataUpdated!();
-                  }
+                  widget.onDataUpdated?.call();
                 }
                 if (mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Judul berhasil diubah")),
+                    const SnackBar(content: Text('Judul berhasil diubah')),
                   );
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF77226)),
-              child: const Text("Simpan"),
+              child: const Text('Simpan'),
             ),
           ],
         );
@@ -111,20 +95,16 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   }
 
   Future<void> _updateTitleInStorage(String newTitle) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String>? historyData = prefs.getStringList('runHistory');
-    
-    if (historyData != null) {
-      List<String> updatedData = [];
-      for (String item in historyData) {
-        Map<String, dynamic> run = jsonDecode(item);
-        if (run['id'] == widget.runId) {
-          run['title'] = newTitle;
-        }
-        updatedData.add(jsonEncode(run));
-      }
-      await prefs.setStringList('runHistory', updatedData);
-    }
+    final String? id = widget.runId ?? _runSession?.id;
+    if (id == null) return;
+
+    await RunHistoryStorage.updateRunTitle(id, newTitle);
+    if (!mounted) return;
+
+    setState(() {
+      _currentTitle = newTitle;
+      _runSession = _runSession?.copyWith(title: newTitle);
+    });
   }
 
   Color _getKepatuhanColor(int percent) {
@@ -135,41 +115,31 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
 
   String _getMonthName(int month) {
     const months = [
-      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-      "Juli", "Agustus", "September", "Oktober", "November", "Desember"
+      'Januari',
+      'Februari',
+      'Maret',
+      'April',
+      'Mei',
+      'Juni',
+      'Juli',
+      'Agustus',
+      'September',
+      'Oktober',
+      'November',
+      'Desember',
     ];
     return months[month - 1];
   }
 
-  String _formatDate(dynamic dateValue) {
-    try {
-      DateTime dateTime;
-      if (dateValue is DateTime) {
-        dateTime = dateValue;
-      } else if (dateValue is String) {
-        dateTime = DateTime.parse(dateValue);
-      } else {
-        return "Tanggal tidak tersedia";
-      }
-      return "${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year}, ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}";
-    } catch (e) {
-      return "Tanggal tidak tersedia";
-    }
+  String _formatDate(DateTime dateTime) {
+    return '${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year}, ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   @override
   Widget build(BuildContext context) {
-    int kepatuhanValue = _runData['compliance'] ?? 80;
-    
-    // 🔥 AMBIL TANGGAL DENGAN BENAR
-    String displayDate = "";
-    if (widget.runData != null && widget.runData!['dateTime'] != null) {
-      displayDate = _formatDate(widget.runData!['dateTime']);
-    } else if (_runData['date'] != null) {
-      displayDate = _formatDate(_runData['date']);
-    } else {
-      displayDate = "Tanggal tidak tersedia";
-    }
+    final RunSession? session = _runSession;
+    final int kepatuhanValue = session?.compliance ?? 80;
+    final String displayDate = session != null ? _formatDate(session.date) : 'Tanggal tidak tersedia';
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -185,14 +155,17 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
           children: [
             Row(
               children: [
-                Text(
-                  _currentTitle,
-                  style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+                Flexible(
+                  child: Text(
+                    _currentTitle,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
                   onTap: _editTitle,
-                  child: Icon(Icons.edit, size: 18, color: const Color(0xFFF77226)),
+                  child: const Icon(Icons.edit, size: 18, color: Color(0xFFF77226)),
                 ),
               ],
             ),
@@ -208,17 +181,19 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Grafik LRC", 
-                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+            const Text('Grafik LRC', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
             const SizedBox(height: 20),
             Row(
               children: [
                 const Column(
                   children: [
-                    Text("4:2", style: TextStyle(fontSize: 12)), SizedBox(height: 28),
-                    Text("3:2", style: TextStyle(fontSize: 12)), SizedBox(height: 28),
-                    Text("2:1", style: TextStyle(fontSize: 12)), SizedBox(height: 28),
-                    Text("1:1", style: TextStyle(fontSize: 12)),
+                    Text('4:2', style: TextStyle(fontSize: 12)),
+                    SizedBox(height: 28),
+                    Text('3:2', style: TextStyle(fontSize: 12)),
+                    SizedBox(height: 28),
+                    Text('2:1', style: TextStyle(fontSize: 12)),
+                    SizedBox(height: 28),
+                    Text('1:1', style: TextStyle(fontSize: 12)),
                   ],
                 ),
                 const SizedBox(width: 10),
@@ -245,10 +220,13 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              _buildTimeLabel("07:10"), _buildTimeLabel("07:20"),
-                              _buildTimeLabel("07:30"), _buildTimeLabel("07:40"),
-                              _buildTimeLabel("07:50"), _buildTimeLabel("08:00"),
-                              _buildTimeLabel("08:10"),
+                              _buildTimeLabel('07:10'),
+                              _buildTimeLabel('07:20'),
+                              _buildTimeLabel('07:30'),
+                              _buildTimeLabel('07:40'),
+                              _buildTimeLabel('07:50'),
+                              _buildTimeLabel('08:00'),
+                              _buildTimeLabel('08:10'),
                             ],
                           ),
                         ),
@@ -261,30 +239,31 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const SizedBox(height: 30),
             Row(
               children: [
-                _buildSummaryCard("LRC Rata-Rata", "3:2", const Color(0xFFFFF1EB)),
+                _buildSummaryCard('LRC Rata-Rata', '3:2', const Color(0xFFFFF1EB)),
                 const SizedBox(width: 15),
                 _buildSummaryCard(
-                  "Kepatuhan", 
-                  "$kepatuhanValue%", 
-                  const Color(0xFFFFF1EB), 
+                  'Kepatuhan',
+                  '$kepatuhanValue%',
+                  const Color(0xFFFFF1EB),
                   valueColor: _getKepatuhanColor(kepatuhanValue),
                 ),
               ],
             ),
             const SizedBox(height: 30),
-            const Text("Detail Aktivitas", 
-                style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFF77226), fontSize: 16)),
+            const Text(
+              'Detail Aktivitas',
+              style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFF77226), fontSize: 16),
+            ),
             const SizedBox(height: 5),
             const Divider(color: Color(0xFFF77226), thickness: 1.5),
-            
-            _buildDetailRow(Icons.location_on_outlined, "Jarak", "${_runData['distance'] ?? 2.3} Km"),
-            _buildDetailRow(Icons.access_time, "Durasi", _runData['duration'] ?? "42 : 31"),
-            _buildDetailRow(Icons.timeline, "SPM Rata-Rata", "${_runData['avgSpm'] ?? 164}"),
+            _buildDetailRow(Icons.location_on_outlined, 'Jarak', '${session?.distanceLabel ?? '0'} Km'),
+            _buildDetailRow(Icons.access_time, 'Durasi', session?.duration ?? '00:00'),
+            _buildDetailRow(Icons.timeline, 'SPM Rata-Rata', '${session?.avgSpm ?? 0}'),
             _buildDetailRow(
-              Icons.percent_outlined, 
-              "Tingkat Kepatuhan", 
-              "$kepatuhanValue%", 
-              isLast: true, 
+              Icons.percent_outlined,
+              'Tingkat Kepatuhan',
+              '$kepatuhanValue%',
+              isLast: true,
               customValueColor: _getKepatuhanColor(kepatuhanValue),
             ),
           ],
@@ -320,7 +299,10 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
               const SizedBox(width: 12),
               Text(label, style: const TextStyle(color: Color(0xFFF77226), fontSize: 15)),
               const Spacer(),
-              Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: customValueColor ?? Colors.black)),
+              Text(
+                value,
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: customValueColor ?? Colors.black),
+              ),
             ],
           ),
         ),
@@ -330,7 +312,14 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   }
 
   Widget _buildTimeLabel(String time) {
-    return SizedBox(width: 60, child: Text(time, textAlign: TextAlign.center, style: const TextStyle(fontSize: 10, color: Colors.grey)));
+    return SizedBox(
+      width: 60,
+      child: Text(
+        time,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 10, color: Colors.grey),
+      ),
+    );
   }
 }
 
@@ -339,23 +328,33 @@ class ChartPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    var gridPaint = Paint()..color = Colors.grey.withValues(alpha: 0.2)..strokeWidth = 1; // 🔥 Ganti withOpacity
+    final Paint gridPaint = Paint()
+      ..color = Colors.grey.withValues(alpha: 0.2)
+      ..strokeWidth = 1;
+
     for (int i = 0; i < 4; i++) {
-      double y = size.height * (i * 0.25 + 0.125);
+      final double y = size.height * (i * 0.25 + 0.125);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
-    var dataPaint = Paint()..color = const Color(0xFFF77226)..style = PaintingStyle.stroke..strokeWidth = 3..strokeCap = StrokeCap.round;
-    double targetY = size.height * 0.375;
-    var path = Path();
-    path.moveTo(0, targetY);
-    path.lineTo(100, targetY - 10);
-    path.lineTo(200, targetY + 20);
-    path.lineTo(300, targetY - 5);
-    path.lineTo(400, targetY + 15);
-    path.lineTo(800, targetY);
+
+    final Paint dataPaint = Paint()
+      ..color = const Color(0xFFF77226)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+
+    final double targetY = size.height * 0.375;
+    final Path path = Path()
+      ..moveTo(0, targetY)
+      ..lineTo(100, targetY - 10)
+      ..lineTo(200, targetY + 20)
+      ..lineTo(300, targetY - 5)
+      ..lineTo(400, targetY + 15)
+      ..lineTo(800, targetY);
+
     canvas.drawPath(path, dataPaint);
   }
-  
+
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

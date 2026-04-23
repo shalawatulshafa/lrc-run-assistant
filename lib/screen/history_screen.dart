@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+
+import '../models/run_session.dart';
+import '../services/run_history_storage.dart';
 import 'detail_lari_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -11,7 +12,7 @@ class HistoryScreen extends StatefulWidget {
 }
 
 class HistoryScreenState extends State<HistoryScreen> {
-  List<Map<String, dynamic>> _historyData = [];
+  List<RunSession> _historyData = [];
   bool _isLoading = true;
 
   @override
@@ -39,39 +40,27 @@ class HistoryScreenState extends State<HistoryScreen> {
 
   Future<void> _loadHistoryData() async {
     setState(() => _isLoading = true);
-    
+
     try {
-      SharedPreferences prefs = await SharedPreferences.getInstance();
-      List<String>? data = prefs.getStringList('runHistory');
-      List<Map<String, dynamic>> loadedData = [];
-      
-      if (data != null) {
-        for (String item in data) {
-          try {
-            Map<String, dynamic> run = jsonDecode(item);
-            DateTime dateTime = DateTime.parse(run['date']);
-            run['formattedDate'] = "${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year} • ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}";
-            loadedData.add(run);
-          } catch (e) {
-            // Skip data yang error
-          }
-        }
-      }
-      
-      loadedData.sort((a, b) => b['date'].compareTo(a['date']));
-      
+      final List<RunSession> loadedData = await RunHistoryStorage.getRuns();
+      loadedData.sort((a, b) => b.date.compareTo(a.date));
+
       setState(() {
         _historyData = loadedData;
         _isLoading = false;
       });
-    } catch (e) {
+    } catch (_) {
       setState(() => _isLoading = false);
     }
   }
 
   String _getMonthName(int month) {
-    const months = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Ags", "Sep", "Okt", "Nov", "Des"];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'];
     return months[month - 1];
+  }
+
+  String _formatDate(DateTime dateTime) {
+    return '${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year} • ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   Color _getKepatuhanColor(int percent) {
@@ -81,8 +70,8 @@ class HistoryScreenState extends State<HistoryScreen> {
   }
 
   String _getLastSyncDate() {
-    if (_historyData.isEmpty) return "-";
-    return _historyData.first['formattedDate'] ?? "-";
+    if (_historyData.isEmpty) return '-';
+    return _formatDate(_historyData.first.date);
   }
 
   @override
@@ -95,7 +84,7 @@ class HistoryScreenState extends State<HistoryScreen> {
         elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
-        title: const Text("History", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+        title: const Text('History', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -106,42 +95,38 @@ class HistoryScreenState extends State<HistoryScreen> {
                     children: [
                       Icon(Icons.history, size: 80, color: Colors.grey[300]),
                       const SizedBox(height: 16),
-                      const Text("Belum ada riwayat lari", style: TextStyle(color: Colors.grey, fontSize: 16)),
+                      const Text('Belum ada riwayat lari', style: TextStyle(color: Colors.grey, fontSize: 16)),
                       const SizedBox(height: 8),
-                      const Text("Klik tombol + untuk memulai lari", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      const Text('Klik tombol + untuk memulai lari', style: TextStyle(color: Colors.grey, fontSize: 12)),
                     ],
                   ),
                 )
               : Column(
                   children: [
-                    // Top Statistics Cards
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       child: Row(
                         children: [
-                          _buildTopStatCard(Icons.access_time, "Sinkronisasi", _getLastSyncDate()),
+                          _buildTopStatCard(Icons.access_time, 'Sinkronisasi', _getLastSyncDate()),
                           const SizedBox(width: 15),
-                          _buildTopStatCard(Icons.list_alt, "Total Sesi", "${_historyData.length} Aktivitas"),
+                          _buildTopStatCard(Icons.list_alt, 'Total Sesi', '${_historyData.length} Aktivitas'),
                         ],
                       ),
                     ),
-                    
-                    // Title
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       child: Align(
                         alignment: Alignment.centerLeft,
-                        child: Text("Riwayat Sesi Lari", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFF77226))),
+                        child: Text(
+                          'Riwayat Sesi Lari',
+                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFFF77226)),
+                        ),
                       ),
                     ),
-                    
-                    // Divider
                     const Padding(
                       padding: EdgeInsets.symmetric(horizontal: 20),
                       child: Divider(color: Color(0xFFF77226), thickness: 1),
                     ),
-                    
-                    // List History
                     Expanded(
                       child: RefreshIndicator(
                         onRefresh: _loadHistoryData,
@@ -204,14 +189,14 @@ class HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
-  Widget _buildHistoryCard(BuildContext context, Map<String, dynamic> data) {
+  Widget _buildHistoryCard(BuildContext context, RunSession data) {
     return GestureDetector(
       onTap: () async {
         await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => DetailLariScreen(
-              runId: data['id'],
+              runId: data.id,
               onDataUpdated: refreshData,
             ),
           ),
@@ -244,7 +229,7 @@ class HistoryScreenState extends State<HistoryScreen> {
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
-                          data['formattedDate'],
+                          _formatDate(data.date),
                           style: const TextStyle(
                             color: Color(0xFFF77226),
                             fontWeight: FontWeight.bold,
@@ -258,7 +243,7 @@ class HistoryScreenState extends State<HistoryScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    data['title'],
+                    data.title,
                     style: const TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 14,
@@ -268,8 +253,8 @@ class HistoryScreenState extends State<HistoryScreen> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    "${data['distance']} km • ${data['duration']}",
-                    style: TextStyle(color: Colors.grey, fontSize: 11),
+                    '${data.distanceLabel} km • ${data.duration}',
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
                   ),
                 ],
               ),
@@ -278,16 +263,16 @@ class HistoryScreenState extends State<HistoryScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 const Text(
-                  "Kepatuhan",
+                  'Kepatuhan',
                   style: TextStyle(color: Colors.grey, fontSize: 9),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  "${data['compliance']}%",
+                  '${data.compliance}%',
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
-                    color: _getKepatuhanColor(data['compliance']),
+                    color: _getKepatuhanColor(data.compliance),
                   ),
                 ),
               ],

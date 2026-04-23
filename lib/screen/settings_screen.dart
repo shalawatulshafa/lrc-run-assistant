@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import '../services/run_history_storage.dart';
 import '../utils/snackbar_helper.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -436,9 +437,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                // Hapus data lari dari SharedPreferences
-                SharedPreferences prefs = await SharedPreferences.getInstance();
-                await prefs.remove('runHistory');
+                await RunHistoryStorage.clear();
 
                 // Panggil callback untuk refresh dashboard & history
                 if (widget.onDataDeleted != null) {
