@@ -349,8 +349,7 @@ Good beginner testing checklist:
 1. Replace simulated login with real API call (`ApiService.login`).
 2. Replace simulated BLE data check with real chest strap integration.
 3. Move storage/network logic out of screens into repository/service classes.
-4. Use one source of truth for run model (typed class instead of raw map/json strings).
-5. Add unit/widget tests for login, history parsing, and detail title update.
+4. Add unit/widget tests for login, history parsing, and detail title update.
 
 ---
 
