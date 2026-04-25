@@ -17,6 +17,7 @@ app.use(express.json());
 app.use('/v1/auth', authRoutes);
 app.use('/v1/user', userRoutes);
 app.use('/v1/runs', runRoutes);
+app.use('/v1/run', runRoutes);
 
 app.get('/v1', (req, res) => {
     ok(res, { message: "LRC Run API is running!" });
