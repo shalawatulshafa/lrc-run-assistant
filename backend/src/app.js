@@ -1,0 +1,27 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import { ok, fail } from './lib/apiResponse.js';
+
+const app = express();
+
+app.use(helmet());
+app.use(cors({ origin: process.env.CORS_ORIGIN }));
+app.use(morgan('dev'));
+app.use(express.json());
+
+app.get('/v1', (req, res) => {
+    ok(res, { message: "LRC Run API is running!" });
+});
+
+app.use((req, res) => {
+    fail(res, 'NOT_FOUND', 'Endpoint not found', 404);
+});
+
+app.use((err, req, res, next) => {
+    console.error(err.stack);
+    fail(res, 'SERVER_ERROR', 'Internal server error', 500);
+});
+
+export default app;
