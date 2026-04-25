@@ -4,7 +4,8 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import { ok, fail } from './lib/apiResponse.js';
 import authRoutes from './routes/auth.routes.js';
-import userRoutes from './routes/user.routes.js'
+import userRoutes from './routes/user.routes.js';
+import runRoutes from './routes/run.routes.js';
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use(express.json());
 
 app.use('/v1/auth', authRoutes);
 app.use('/v1/user', userRoutes);
+app.use('/v1/runs', runRoutes);
 
 app.get('/v1', (req, res) => {
     ok(res, { message: "LRC Run API is running!" });
