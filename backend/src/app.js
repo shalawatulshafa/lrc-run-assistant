@@ -3,6 +3,8 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { ok, fail } from './lib/apiResponse.js';
+import authRoutes from './routes/auth.routes.js';
+import userRoutes from './routes/user.routes.js'
 
 const app = express();
 
@@ -10,6 +12,9 @@ app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN }));
 app.use(morgan('dev'));
 app.use(express.json());
+
+app.use('/v1/auth', authRoutes);
+app.use('/v1/user', userRoutes);
 
 app.get('/v1', (req, res) => {
     ok(res, { message: "LRC Run API is running!" });
