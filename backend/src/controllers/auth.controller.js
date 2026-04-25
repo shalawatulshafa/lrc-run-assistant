@@ -1,6 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import primsa from '../lib/prisma.js'
+import prisma from '../lib/prisma.js'
 import { ok, fail } from '../lib/apiResponse.js';
 
 export const register = async (req, res, next) => {
