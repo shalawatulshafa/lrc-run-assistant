@@ -44,7 +44,7 @@ export const getRunById = async (req, res, next) => {
 export const syncRun = async (req, res, next) => {
     try {
         const userId = req.user.userId;
-        const { dateTime, distance, avgSpm, compiance, duration } = req.body;
+        const { dateTime, distance, avgSpm, compliance, duration } = req.body;
 
         const dateObj = new Date(dateTime);
         const title = `Run on ${dateObj.toLocaleDateString()}`;
