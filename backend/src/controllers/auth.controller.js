@@ -6,9 +6,9 @@ import { ok, fail } from '../lib/apiResponse.js';
 export const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
-    
+
     if (!name || !email || !password){
-      fail(res, 'VALIDATION_ERROR', 'Name, email, dan password diperlukan', 400);
+      return fail(res, 'VALIDATION_ERROR', 'Name, email, dan password diperlukan', 400);
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });

@@ -34,4 +34,8 @@ app.use((err, req, res, next) => {
     fail(res, 'SERVER_ERROR', 'Internal server error', 500);
 });
 
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || '*' 
+}));
+
 export default app;

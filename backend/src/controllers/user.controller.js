@@ -39,7 +39,7 @@ export const updateProfile = async (req, res, next) => {
         return ok(res, updatedUser);
     } catch (error) {
         if (error.code == 'P2002') {
-            return fail(res, 'CONFLICT', 'Email sudah digunakan', 409);
+            return fail(res, 'EMAIL_EXISTS', 'Email sudah digunakan', 409);
         }
         next(error);
     }
