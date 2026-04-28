@@ -78,14 +78,14 @@ export const deleteRun = async (req, res, next) => {
         });
 
         if (!run) {
-            return fail(res, 'NOT_FOUND', 'Run not found', 404);
+            return fail(res, 'NOT_FOUND', 'Data lari tidak ditemukan', 404);
         }
 
         await prisma.run.delete({
             where: { id: runId },
         });
 
-        return ok(res, { message: 'Run deleted successfully' })
+        return ok(res, { message: 'Data lari berhasil dihapus' })
     } catch (error) {
         next(error);
     }

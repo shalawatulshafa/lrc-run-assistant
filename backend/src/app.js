@@ -6,6 +6,8 @@ import { ok, fail } from './lib/apiResponse.js';
 import authRoutes from './routes/auth.routes.js';
 import userRoutes from './routes/user.routes.js';
 import runRoutes from './routes/run.routes.js';
+import { getRunById } from './controllers/run.controller.js';
+import { verifyToken } from './middleware/auth.js';
 
 const app = express();
 
@@ -17,14 +19,14 @@ app.use(express.json());
 app.use('/v1/auth', authRoutes);
 app.use('/v1/user', userRoutes);
 app.use('/v1/runs', runRoutes);
-app.use('/v1/run', runRoutes);
+app.get('/v1/run/:id', verifyToken, getRunById); 
 
 app.get('/v1', (req, res) => {
-    ok(res, { message: "LRC Run API is running!" });
+    ok(res, { message: "LRC Run API sedang berjalan!" });
 });
 
 app.use((req, res) => {
-    fail(res, 'NOT_FOUND', 'Endpoint not found', 404);
+    fail(res, 'NOT_FOUND', 'Endpoint tidak ditemukan', 404);
 });
 
 app.use((err, req, res, next) => {

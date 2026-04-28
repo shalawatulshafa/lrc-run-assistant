@@ -6,6 +6,10 @@ import { ok, fail } from '../lib/apiResponse.js';
 export const register = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
+    
+    if (!name || !email || !password){
+      fail(res, 'VALIDATION_ERROR', 'Name, email, dan password diperlukan', 400);
+    }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
@@ -35,6 +39,10 @@ export const register = async (req, res, next) => {
 export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
+
+    if (!email || !password) {
+      return fail(res, 'VALIDATION_ERROR', 'Email dan password diperlukan', 400);
+    }
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {

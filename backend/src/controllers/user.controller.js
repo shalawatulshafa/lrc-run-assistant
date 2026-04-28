@@ -23,17 +23,24 @@ export const getProfile = async (req, res, next) => {
 export const updateProfile = async (req, res, next) => {
     try {
         const userId = req.user.userId;
-        const { name } = req.body;
+        const { name, email } = req.body;
+
+        if (!name || !email) {
+            return fail(res, 'VALIDATION_ERROR', 'Name dan email diperlukan', 400);
+        }
 
         // Update user's name in the database
         const updatedUser = await prisma.user.update({
             where: { id: userId },
-            data: { name },
+            data: { name, email },
             select: { id: true, name: true, email: true }
         });
 
         return ok(res, updatedUser);
     } catch (error) {
+        if (error.code == 'P2002') {
+            return fail(res, 'CONFLICT', 'Email sudah digunakan', 409);
+        }
         next(error);
     }
 };
