@@ -1,10 +1,14 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../services/api_service.dart';
 import '../utils/snackbar_helper.dart';
 
 class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
+
   @override
-  _LoginScreenState createState() => _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
@@ -15,58 +19,60 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      SnackbarHelper.showError(context, "Email dan password harus diisi");
+      SnackbarHelper.showError(context, 'Email dan password harus diisi');
       return;
     }
 
     setState(() => _isLoading = true);
 
-    // Simulasi proses login
-    await Future.delayed(Duration(seconds: 1));
+    try {
+      final Map<String, dynamic> result = await ApiService.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
 
-    // Simpan data user ke SharedPreferences
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    String? savedName = prefs.getString('userName');
-    String? savedEmail = prefs.getString('userEmail');
+      final Map<String, dynamic> user = (result['user'] as Map<String, dynamic>? ?? <String, dynamic>{});
+      final String token = result['token']?.toString() ?? '';
+      final String email = user['email']?.toString() ?? _emailController.text.trim();
+      final String name = user['name']?.toString() ?? email.split('@').first;
 
-    String finalName = savedName ?? _emailController.text.split('@')[0];
-    String finalEmail = savedEmail ?? _emailController.text;
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setString('authToken', token);
+      await prefs.setString('userEmail', email);
+      await prefs.setString('userName', name);
 
-    await prefs.setBool('isLoggedIn', true);
-    await prefs.setString('userEmail', finalEmail);
-    await prefs.setString('userName', finalName);
-
-    setState(() => _isLoading = false);
-
-    SnackbarHelper.showSuccess(context, "Login berhasil");
-    // Navigasi ke halaman utama
-    Navigator.pushReplacementNamed(context, '/main');
+      if (!mounted) return;
+      SnackbarHelper.showSuccess(context, 'Login berhasil');
+      Navigator.pushReplacementNamed(context, '/main');
+    } catch (e) {
+      if (!mounted) return;
+      SnackbarHelper.showError(context, e.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      resizeToAvoidBottomInset:
-          true, // ← Tambahkan ini (default true, tapi pastikan)
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: SingleChildScrollView(
-          // ← BUNGKUS dengan SingleChildScrollView
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(
-              context,
-            ).viewInsets.bottom, // ← Tambahkan ini untuk keyboard
-          ),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
           child: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 50),
-                Icon(Icons.directions_run, size: 60, color: Color(0xFFF77226)),
-                SizedBox(height: 20),
-                Text(
-                  "Login",
+                const SizedBox(height: 50),
+                const Icon(Icons.directions_run, size: 60, color: Color(0xFFF77226)),
+                const SizedBox(height: 20),
+                const Text(
+                  'Login',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -74,45 +80,35 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 Text(
-                  "Masuk untuk melanjutkan",
+                  'Masuk untuk melanjutkan',
                   style: TextStyle(color: Colors.grey[600], fontSize: 16),
                 ),
-                SizedBox(height: 40),
+                const SizedBox(height: 40),
                 TextField(
                   controller: _emailController,
                   decoration: InputDecoration(
-                    labelText: "Email",
-                    prefixIcon: Icon(
-                      Icons.email_outlined,
-                      color: Color(0xFFF77226),
-                    ),
+                    labelText: 'Email',
+                    prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFFF77226)),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Color(0xFFF77226)),
+                      borderSide: const BorderSide(color: Color(0xFFF77226)),
                     ),
                   ),
                   keyboardType: TextInputType.emailAddress,
-                  textInputAction: TextInputAction.next, // ← Tambahkan ini
+                  textInputAction: TextInputAction.next,
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
-                    labelText: "Password",
-                    prefixIcon: Icon(
-                      Icons.lock_outline,
-                      color: Color(0xFFF77226),
-                    ),
+                    labelText: 'Password',
+                    prefixIcon: const Icon(Icons.lock_outline, color: Color(0xFFF77226)),
                     suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
+                      icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
                       onPressed: () {
                         setState(() => _obscurePassword = !_obscurePassword);
                       },
@@ -122,26 +118,26 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide(color: Color(0xFFF77226)),
+                      borderSide: const BorderSide(color: Color(0xFFF77226)),
                     ),
                   ),
-                  textInputAction: TextInputAction.done, // ← Tambahkan ini
-                  onEditingComplete: _login, // ← Enter langsung login
+                  textInputAction: TextInputAction.done,
+                  onEditingComplete: _login,
                 ),
-                SizedBox(height: 30),
+                const SizedBox(height: 30),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _login,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFFF77226),
-                      padding: EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: const Color(0xFFF77226),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     child: _isLoading
-                        ? SizedBox(
+                        ? const SizedBox(
                             height: 20,
                             width: 20,
                             child: CircularProgressIndicator(
@@ -149,8 +145,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Colors.white,
                             ),
                           )
-                        : Text(
-                            "Login",
+                        : const Text(
+                            'Login',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -158,23 +154,21 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                   ),
                 ),
-                SizedBox(height: 20),
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text("Belum punya akun? "),
+                    const Text('Belum punya akun? '),
                     TextButton(
-                      onPressed: () {
-                        // Navigasi ke register
-                      },
-                      child: Text(
-                        "Daftar",
+                      onPressed: () {},
+                      child: const Text(
+                        'Daftar',
                         style: TextStyle(color: Color(0xFFF77226)),
                       ),
                     ),
                   ],
                 ),
-                SizedBox(height: 30), // ← Tambahkan bottom padding
+                const SizedBox(height: 30),
               ],
             ),
           ),

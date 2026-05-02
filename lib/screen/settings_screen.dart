@@ -1,6 +1,9 @@
+﻿import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+
+import '../services/api_service.dart';
 import '../services/run_history_storage.dart';
 import '../utils/snackbar_helper.dart';
 
@@ -14,8 +17,8 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  String userName = "";
-  String userEmail = "";
+  String userName = '';
+  String userEmail = '';
   bool _isLoading = true;
 
   @override
@@ -25,22 +28,55 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadUserData() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? token = prefs.getString('authToken');
+
+    try {
+      if (token != null && token.isNotEmpty) {
+        final Map<String, dynamic> profile = await ApiService.getProfile(token);
+        userName = profile['name']?.toString() ?? 'Pengguna';
+        userEmail = profile['email']?.toString() ?? 'email@example.com';
+
+        await prefs.setString('userName', userName);
+        await prefs.setString('userEmail', userEmail);
+      } else {
+        userName = prefs.getString('userName') ?? 'Pengguna';
+        userEmail = prefs.getString('userEmail') ?? 'email@example.com';
+      }
+    } catch (_) {
+      userName = prefs.getString('userName') ?? 'Pengguna';
+      userEmail = prefs.getString('userEmail') ?? 'email@example.com';
+    }
+
+    if (!mounted) return;
     setState(() {
-      userName = prefs.getString('userName') ?? "Pengguna";
-      userEmail = prefs.getString('userEmail') ?? "email@example.com";
       _isLoading = false;
     });
   }
 
   Future<void> _saveUserData(String name, String email) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setString('userName', name);
-    await prefs.setString('userEmail', email);
-    setState(() {
-      userName = name;
-      userEmail = email;
-    });
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final String? token = prefs.getString('authToken');
+
+    try {
+      if (token != null && token.isNotEmpty) {
+        final Map<String, dynamic> updated = await ApiService.updateProfile(token, name, email);
+        userName = updated['name']?.toString() ?? name;
+        userEmail = updated['email']?.toString() ?? email;
+      } else {
+        userName = name;
+        userEmail = email;
+      }
+
+      await prefs.setString('userName', userName);
+      await prefs.setString('userEmail', userEmail);
+
+      if (!mounted) return;
+      setState(() {});
+    } catch (e) {
+      if (!mounted) return;
+      SnackbarHelper.showError(context, e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 
   @override
@@ -62,7 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          "Pengaturan",
+          'Pengaturan',
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
         ),
       ),
@@ -71,21 +107,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- BAGIAN PROFIL ---
-            _buildSectionTitle("Profil"),
+            _buildSectionTitle('Profil'),
             _buildProfileCard(
               name: userName,
               email: userEmail,
-              photoUrl: "",
+              photoUrl: '',
               onEditPressed: () {
                 _showEditProfileDialog(context, userName, userEmail);
               },
             ),
-
             const SizedBox(height: 30),
-
-            // --- PENGELOLAAN DATA ---
-            _buildSectionTitle("Pengelolaan Data"),
+            _buildSectionTitle('Pengelolaan Data'),
             Container(
               padding: const EdgeInsets.all(15),
               decoration: _cardDecoration(),
@@ -102,16 +134,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          "Hapus Data Lokal",
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                          'Hapus Data Lokal',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          "Hapus semua data sesi lari yang tersimpan di perangkat (tidak dapat dikembalikan)",
-                          style: TextStyle(color: Colors.grey, fontSize: 12),
+                          'Hapus semua data sesi lari yang tersimpan di perangkat (tidak dapat dikembalikan)',
+                          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                         ),
                       ],
                     ),
@@ -122,28 +151,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       _showDeleteConfirmDialog(context);
                     },
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                       decoration: BoxDecoration(
-                        color: Colors.red[700],
+                        color: Colors.red.shade700,
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Column(
                         children: [
-                          Icon(
-                            Icons.cleaning_services,
-                            color: Colors.white,
-                            size: 16,
-                          ),
+                          Icon(Icons.cleaning_services, color: Colors.white, size: 16),
                           Text(
-                            "Hapus",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            'Hapus',
+                            style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -152,15 +170,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 30),
-
-            // --- INFORMASI & BANTUAN ---
-            _buildSectionTitle("Informasi & Bantuan"),
+            _buildSectionTitle('Informasi & Bantuan'),
             _buildInfoCard(
               icon: Icons.mail_outline,
-              title: "Kontak Pengembang",
-              subtitle: "Hubungi tim dukungan dan pengembang proyek",
+              title: 'Kontak Pengembang',
+              subtitle: 'Hubungi tim dukungan dan pengembang proyek',
               onTap: () {
                 _showDeveloperContactDialog(context);
               },
@@ -168,27 +183,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 15),
             _buildInfoCard(
               icon: Icons.info_outline,
-              title: "Tentang LRC Run Assistant",
-              subtitle: "Versi aplikasi, hak cipta dan dokumentasi proyek",
+              title: 'Tentang LRC Run Assistant',
+              subtitle: 'Versi aplikasi, hak cipta dan dokumentasi proyek',
               onTap: () {
                 _showAboutDialog(context);
               },
             ),
-
-            // DEBUG: Lihat Data Tersimpan (untuk development)
             const SizedBox(height: 15),
             _buildInfoCard(
               icon: Icons.storage,
-              title: "Debug: Lihat Data Tersimpan",
-              subtitle: "Cek isi SharedPreferences (untuk developer)",
+              title: 'Debug: Lihat Data Tersimpan',
+              subtitle: 'Cek isi SharedPreferences (untuk developer)',
               onTap: () async {
                 await _showSavedDataDialog(context);
               },
             ),
-
             const SizedBox(height: 40),
-
-            // --- TOMBOL LOGOUT ---
             Center(
               child: SizedBox(
                 width: double.infinity,
@@ -198,30 +208,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                   icon: const Icon(Icons.logout, color: Colors.white, size: 20),
                   label: const Text(
-                    "Logout",
+                    'Logout',
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     elevation: 2,
                   ),
                 ),
               ),
             ),
-
             const SizedBox(height: 30),
           ],
         ),
       ),
     );
   }
-
-  // ==================== WIDGET BUILDERS ====================
 
   Widget _buildSectionTitle(String title) {
     return Column(
@@ -255,12 +260,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           CircleAvatar(
             radius: 30,
             backgroundColor: Colors.orange.shade100,
-            backgroundImage: photoUrl.isNotEmpty
-                ? NetworkImage(photoUrl)
-                : null,
-            child: photoUrl.isEmpty
-                ? Icon(Icons.person, size: 35, color: Colors.orange.shade800)
-                : null,
+            backgroundImage: photoUrl.isNotEmpty ? NetworkImage(photoUrl) : null,
+            child: photoUrl.isEmpty ? Icon(Icons.person, size: 35, color: Colors.orange.shade800) : null,
           ),
           const SizedBox(width: 15),
           Expanded(
@@ -276,20 +277,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  email,
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
-                ),
+                Text(email, style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
               ],
             ),
           ),
           TextButton.icon(
             onPressed: onEditPressed,
             icon: Icon(Icons.edit, size: 18, color: Colors.orange.shade700),
-            label: Text(
-              "Edit",
-              style: TextStyle(color: Colors.orange.shade700),
-            ),
+            label: Text('Edit', style: TextStyle(color: Colors.orange.shade700)),
             style: TextButton.styleFrom(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               shape: RoundedRectangleBorder(
@@ -322,18 +317,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
-                    ),
-                  ),
+                  Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
                   const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(color: Colors.grey, fontSize: 12),
-                  ),
+                  Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                 ],
               ),
             ),
@@ -352,45 +338,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ==================== DIALOGS & FUNCTIONS ====================
-
-  void _showEditProfileDialog(
-    BuildContext context,
-    String currentName,
-    String currentEmail,
-  ) {
-    final TextEditingController nameController = TextEditingController(
-      text: currentName,
-    );
-    final TextEditingController emailController = TextEditingController(
-      text: currentEmail,
-    );
+  void _showEditProfileDialog(BuildContext context, String currentName, String currentEmail) {
+    final TextEditingController nameController = TextEditingController(text: currentName);
+    final TextEditingController emailController = TextEditingController(text: currentEmail);
 
     showDialog(
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Edit Profil"),
+          title: const Text('Edit Profil'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: nameController,
                 decoration: InputDecoration(
-                  labelText: "Nama",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  labelText: 'Nama',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: emailController,
                 decoration: InputDecoration(
-                  labelText: "Email",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
+                  labelText: 'Email',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                 ),
                 keyboardType: TextInputType.emailAddress,
               ),
@@ -399,21 +371,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Batal"),
+              child: const Text('Batal'),
             ),
             ElevatedButton(
               onPressed: () {
-                _saveUserData(nameController.text, emailController.text);
+                _saveUserData(nameController.text.trim(), emailController.text.trim());
                 Navigator.pop(context);
-                SnackbarHelper.showSuccess(
-                  context,
-                  "Profil berhasil diperbarui",
-                );
+                SnackbarHelper.showSuccess(context, 'Profil berhasil diperbarui');
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF77226),
-              ),
-              child: const Text("Simpan"),
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF77226)),
+              child: const Text('Simpan'),
             ),
           ],
         );
@@ -426,34 +393,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Hapus Data Lokal"),
-          content: const Text(
-            "Yakin ingin menghapus semua data sesi lari? Tindakan ini tidak dapat dibatalkan.",
-          ),
+          title: const Text('Hapus Data Lokal'),
+          content: const Text('Yakin ingin menghapus semua data sesi lari? Tindakan ini tidak dapat dibatalkan.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Batal"),
+              child: const Text('Batal'),
             ),
             ElevatedButton(
               onPressed: () async {
                 await RunHistoryStorage.clear();
 
-                // Panggil callback untuk refresh dashboard & history
-                if (widget.onDataDeleted != null) {
-                  widget.onDataDeleted!();
-                }
+                widget.onDataDeleted?.call();
 
                 if (mounted) {
                   Navigator.pop(context);
-                  SnackbarHelper.showSuccess(
-                    context,
-                    "Data lokal telah dihapus",
-                  );
+                  SnackbarHelper.showSuccess(context, 'Data lokal telah dihapus');
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text("Hapus"),
+              child: const Text('Hapus'),
             ),
           ],
         );
@@ -466,33 +425,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Logout"),
-          content: const Text("Apakah Anda yakin ingin keluar?"),
+          title: const Text('Logout'),
+          content: const Text('Apakah Anda yakin ingin keluar?'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Batal"),
+              child: const Text('Batal'),
             ),
             ElevatedButton(
               onPressed: () async {
-                // Hapus data login
-                SharedPreferences prefs = await SharedPreferences.getInstance();
+                final SharedPreferences prefs = await SharedPreferences.getInstance();
+                final String? token = prefs.getString('authToken');
+
+                try {
+                  if (token != null && token.isNotEmpty) {
+                    await ApiService.logout(token);
+                  }
+                } catch (_) {
+                  // Keep logout flow even when backend is unreachable.
+                }
+
                 await prefs.setBool('isLoggedIn', false);
+                await prefs.remove('authToken');
 
                 if (mounted) {
-                  Navigator.pop(context); // tutup dialog
-                  SnackbarHelper.showInfo(context, "Logout berhasil");
-
-                  // Navigasi ke halaman welcome/login dan hapus semua route
-                  Navigator.of(
-                    context,
-                  ).pushNamedAndRemoveUntil('/', (route) => false);
+                  Navigator.pop(context);
+                  SnackbarHelper.showInfo(context, 'Logout berhasil');
+                  Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
                 }
               },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-              ),
-              child: const Text("Logout"),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              child: const Text('Logout'),
             ),
           ],
         );
@@ -505,31 +468,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Kontak Pengembang"),
-          content: Column(
+          title: const Text('Kontak Pengembang'),
+          content: const Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("📧 Email: TimTA22@gmail.com"),
-              const SizedBox(height: 8),
-              const Text("📱 Phone: +62 812 3456 7890"),
-              const SizedBox(height: 8),
-              const Text("🌐 Website: www.TimTA22.com"),
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-              const Text(
-                "Tim Pengembang:",
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const Text("• Shalawatul Shafa - Frontend"),
-              const Text("• Kayla Pramudio Bagaskara - Backend"),
+              Text('Email: TimTA22@gmail.com'),
+              SizedBox(height: 8),
+              Text('Phone: +62 812 3456 7890'),
+              SizedBox(height: 8),
+              Text('Website: www.TimTA22.com'),
+              SizedBox(height: 16),
+              Divider(),
+              SizedBox(height: 8),
+              Text('Tim Pengembang:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('- Shalawatul Shafa - Frontend'),
+              Text('- Kayla Pramudio Bagaskara - Backend'),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Tutup"),
+              child: const Text('Tutup'),
             ),
           ],
         );
@@ -542,51 +502,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text("Tentang LRC Run Assistant"),
+          title: const Text('Tentang LRC Run Assistant'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Center(
-                child: Icon(
-                  Icons.directions_run,
-                  size: 50,
-                  color: Color(0xFFF77226),
-                ),
+                child: Icon(Icons.directions_run, size: 50, color: Color(0xFFF77226)),
               ),
               const SizedBox(height: 16),
               const Center(
-                child: Text(
-                  "LRC Run Assistant",
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                child: Text('LRC Run Assistant', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 8),
-              const Center(
-                child: Text(
-                  "Version 1.0.0",
-                  style: TextStyle(color: Colors.grey),
-                ),
-              ),
+              const Center(child: Text('Version 1.0.0', style: TextStyle(color: Colors.grey))),
               const SizedBox(height: 16),
               const Text(
-                "Aplikasi pendamping lari untuk membantu atlet memantau kepatuhan LRC (Langkah per menit) menggunakan chest strap.",
+                'Aplikasi pendamping lari untuk membantu atlet memantau kepatuhan LRC (Langkah per menit) menggunakan chest strap.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 8),
-              const Text("© 2025 LRC Run Assistant Team"),
-              Text(
-                "All rights reserved",
-                style: TextStyle(fontSize: 10, color: Colors.grey[600]),
-              ),
+              const Text('© 2025 LRC Run Assistant Team'),
+              Text('All rights reserved', style: TextStyle(fontSize: 10, color: Colors.grey[600])),
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text("Tutup"),
+              child: const Text('Tutup'),
             ),
           ],
         );
@@ -595,33 +540,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showSavedDataDialog(BuildContext context) async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    List<String>? data = prefs.getStringList('runHistory');
+    final SharedPreferences prefs = await SharedPreferences.getInstance();
+    final List<String>? data = prefs.getStringList('runHistory');
 
-    String message = "Total data: ${data?.length ?? 0}\n\n";
+    String message = 'Total data: ${data?.length ?? 0}\n\n';
     if (data != null && data.isNotEmpty) {
       for (int i = 0; i < data.length; i++) {
         try {
-          Map<String, dynamic> run = jsonDecode(data[i]);
-          message += "${i + 1}. ${run['title']}\n";
-          message += "   📅 ${run['date']}\n";
-          message += "   📍 ${run['distance']} km | ⏱️ ${run['duration']}\n";
-          message += "   📊 Kepatuhan: ${run['compliance']}%\n";
-          message += "   🆔 ID: ${run['id']}\n\n";
-        } catch (e) {
-          message += "${i + 1}. Error parsing data\n\n";
+          final Map<String, dynamic> run = jsonDecode(data[i]);
+          message += '${i + 1}. ${run['title']}\n';
+          message += '   Date: ${run['date']}\n';
+          message += '   ${run['distance']} km | ${run['duration']}\n';
+          message += '   Kepatuhan: ${run['compliance']}%\n';
+          message += '   ID: ${run['id']}\n\n';
+        } catch (_) {
+          message += '${i + 1}. Error parsing data\n\n';
         }
       }
     } else {
-      message += "Belum ada data lari yang tersimpan\n";
-      message += "Silakan coba download data lari terlebih dahulu";
+      message += 'Belum ada data lari yang tersimpan\n';
+      message += 'Silakan coba download data lari terlebih dahulu';
     }
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text("📦 Data SharedPreferences"),
-        content: Container(
+        title: const Text('Data SharedPreferences'),
+        content: SizedBox(
           width: double.maxFinite,
           child: SingleChildScrollView(
             child: Text(
@@ -633,7 +578,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Tutup"),
+            child: const Text('Tutup'),
           ),
           if (data != null && data.isNotEmpty)
             TextButton(
@@ -642,14 +587,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 if (mounted) {
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Data debug telah dihapus")),
+                    const SnackBar(content: Text('Data debug telah dihapus')),
                   );
                 }
               },
-              child: const Text(
-                "Hapus Semua",
-                style: TextStyle(color: Colors.red),
-              ),
+              child: const Text('Hapus Semua', style: TextStyle(color: Colors.red)),
             ),
         ],
       ),

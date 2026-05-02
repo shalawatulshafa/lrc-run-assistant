@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
@@ -61,7 +61,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
       final List<RunSession> runs = await RunHistoryStorage.getRuns();
 
       setState(() {
-        _latestRunData = runs.isNotEmpty ? runs.last : null;
+        _latestRunData = runs.isNotEmpty ? runs.first : null;
         _isLoadingLatest = false;
       });
     } catch (e) {
@@ -620,3 +620,4 @@ class DashboardRunnersState extends State<DashboardRunners> {
     );
   }
 }
+

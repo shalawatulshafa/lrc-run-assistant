@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
@@ -38,7 +38,7 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
     final String autoTitle =
         'Lari 5.2km - ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
 
-    final RunSession runSession = RunSession(
+    final RunSession draftSession = RunSession(
       id: id,
       title: autoTitle,
       date: now,
@@ -48,7 +48,7 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
       duration: '42:15',
     );
 
-    await RunHistoryStorage.addRun(runSession);
+    final RunSession savedSession = await RunHistoryStorage.addRun(draftSession) ?? draftSession;
     widget.onDataDownloaded?.call();
 
     if (!mounted) return;
@@ -56,7 +56,7 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
       context,
       MaterialPageRoute(
         builder: (context) => DetailLariScreen(
-          runSession: runSession,
+          runSession: savedSession,
           onDataUpdated: () {},
         ),
       ),
@@ -81,9 +81,7 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _progress < 1.0
-                  ? 'Pengunduhan masih berjalan,\nharap tunggu'
-                  : 'Pengunduhan Selesai!',
+              _progress < 1.0 ? 'Pengunduhan masih berjalan,\nharap tunggu' : 'Pengunduhan Selesai!',
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),

@@ -1,137 +1,139 @@
-// lib/services/api_service.dart
-// 🔥 FILE INI AKAN DIISI OLEH BACKEND DEVELOPER
-// 🔥 INI HANYA TEMPLATE, JANGAN DIUBAH ISI NYA SAMPAI BACKEND JADI
+﻿import 'dart:convert';
 
-import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // 🔥 GANTI URL INI SAAT BACKEND SUDAH JADI
-  static const String baseUrl = "https://api.lrc-run.com/v1";
+  // For Android emulator, use: http://10.0.2.2:3000/v1
+  static const String baseUrl = String.fromEnvironment(
+    'API_BASE_URL',
+    defaultValue: 'http://10.0.2.2:3000/v1',
+  );
 
-  // ============================================================
-  // 🔥 AUTHENTICATION ENDPOINTS
-  // ============================================================
-
-  /// Login user
-  /// Request: { "email": "string", "password": "string" }
-  /// Response: { "success": true, "data": { "token": "string", "user": {...} } }
-  static Future<Map<String, dynamic>> login(
-    String email,
-    String password,
-  ) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+  static Map<String, String> _headers({String? token}) {
+    return {
+      'Content-Type': 'application/json',
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
   }
 
-  /// Register user baru
-  /// Request: { "email": "string", "name": "string", "password": "string" }
-  /// Response: { "success": true, "data": { "token": "string", "user": {...} } }
-  static Future<Map<String, dynamic>> register(
-    String email,
-    String name,
-    String password,
-  ) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+  static Exception _toException(http.Response response) {
+    try {
+      final Map<String, dynamic> body = jsonDecode(response.body);
+      final dynamic error = body['error'];
+      final String message =
+          error is Map<String, dynamic> ? (error['message']?.toString() ?? 'Request failed') : 'Request failed';
+      return Exception(message);
+    } catch (_) {
+      return Exception('Request failed with status ${response.statusCode}');
+    }
   }
 
-  /// Logout user
-  /// Headers: Authorization: Bearer {token}
+  static Future<Map<String, dynamic>> _parseData(http.Response response) async {
+    final Map<String, dynamic> decoded = jsonDecode(response.body);
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+      final dynamic data = decoded['data'];
+      return data is Map<String, dynamic> ? data : <String, dynamic>{};
+    }
+    throw _toException(response);
+  }
+
+  static Future<Map<String, dynamic>> login(String email, String password) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/login'),
+      headers: _headers(),
+      body: jsonEncode({'email': email, 'password': password}),
+    );
+    return _parseData(response);
+  }
+
+  static Future<Map<String, dynamic>> register(String email, String name, String password) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/register'),
+      headers: _headers(),
+      body: jsonEncode({'email': email, 'name': name, 'password': password}),
+    );
+    return _parseData(response);
+  }
+
   static Future<void> logout(String token) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/logout'),
+      headers: _headers(token: token),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _toException(response);
+    }
   }
 
-  // ============================================================
-  // 🔥 USER PROFILE ENDPOINTS
-  // ============================================================
-
-  /// Get user profile
-  /// Headers: Authorization: Bearer {token}
-  /// Response: { "success": true, "data": { "id": "string", "name": "string", "email": "string" } }
   static Future<Map<String, dynamic>> getProfile(String token) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+    final response = await http.get(
+      Uri.parse('$baseUrl/user/profile'),
+      headers: _headers(token: token),
+    );
+    return _parseData(response);
   }
 
-  /// Update user profile
-  /// Headers: Authorization: Bearer {token}
-  /// Request: { "name": "string", "email": "string" }
-  /// Response: { "success": true, "data": { ... } }
-  static Future<Map<String, dynamic>> updateProfile(
-    String token,
-    String name,
-    String email,
-  ) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+  static Future<Map<String, dynamic>> updateProfile(String token, String name, String email) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/user/profile'),
+      headers: _headers(token: token),
+      body: jsonEncode({'name': name, 'email': email}),
+    );
+    return _parseData(response);
   }
 
-  // ============================================================
-  // 🔥 RUN DATA ENDPOINTS
-  // ============================================================
-
-  /// Get all run history
-  /// Headers: Authorization: Bearer {token}
-  /// Response: { "success": true, "data": [ { "id": "string", "title": "string", ... } ] }
   static Future<List<dynamic>> getRunHistory(String token) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+    final response = await http.get(
+      Uri.parse('$baseUrl/runs'),
+      headers: _headers(token: token),
+    );
+    final Map<String, dynamic> decoded = jsonDecode(response.body);
+    if (response.statusCode >= 200 && response.statusCode < 300 && decoded['success'] == true) {
+      final dynamic data = decoded['data'];
+      return data is List ? data : <dynamic>[];
+    }
+    throw _toException(response);
   }
 
-  /// Get detail run by ID
-  /// Headers: Authorization: Bearer {token}
-  /// Response: { "success": true, "data": { ... } }
-  static Future<Map<String, dynamic>> getRunDetail(
-    String token,
-    String runId,
-  ) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+  static Future<Map<String, dynamic>> getRunDetail(String token, String runId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/run/$runId'),
+      headers: _headers(token: token),
+    );
+    return _parseData(response);
   }
 
-  /// Sync run data from chest strap
-  /// Headers: Authorization: Bearer {token}
-  /// Request: { "dateTime": "string", "distance": 0, "avgSpm": 0, "compliance": 0, "duration": 0 }
-  /// Response: { "success": true, "data": { "runId": "string", "title": "string" } }
-  static Future<Map<String, dynamic>> syncRunData(
-    String token,
-    Map<String, dynamic> runData,
-  ) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+  static Future<Map<String, dynamic>> syncRunData(String token, Map<String, dynamic> runData) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/runs/sync'),
+      headers: _headers(token: token),
+      body: jsonEncode(runData),
+    );
+    return _parseData(response);
   }
 
-  /// Delete run data by ID
-  /// Headers: Authorization: Bearer {token}
   static Future<void> deleteRunData(String token, String runId) async {
-    // TODO: Backend akan implementasi
-    throw UnimplementedError();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/runs/$runId'),
+      headers: _headers(token: token),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _toException(response);
+    }
   }
 
-  // ============================================================
-  // 🔥 CHEST STRAP (BLE) ENDPOINTS
-  // ============================================================
-
-  /// Check if chest strap has new data
-  /// Response: { "hasNewData": true/false, "dataCount": 0 }
   static Future<bool> hasNewData() async {
-    // TODO: Backend akan implementasi (BLE)
-    throw UnimplementedError();
+    // Backend BLE endpoint is not implemented yet.
+    return true;
   }
 
-  /// Get chest strap status
-  /// Response: { "connected": true/false, "batteryLevel": 0, "mode": "string" }
   static Future<Map<String, dynamic>> getChestStrapStatus() async {
-    // TODO: Backend akan implementasi (BLE)
-    throw UnimplementedError();
+    // Backend BLE endpoint is not implemented yet.
+    return {'connected': true, 'batteryLevel': 85, 'mode': 'SYNC'};
   }
 
-  /// Download run data from chest strap
-  /// Response: { "success": true, "data": [ ... ] }
   static Future<List<Map<String, dynamic>>> downloadRunData() async {
-    // TODO: Backend akan implementasi (BLE)
-    throw UnimplementedError();
+    // Backend BLE endpoint is not implemented yet.
+    return <Map<String, dynamic>>[];
   }
 }
