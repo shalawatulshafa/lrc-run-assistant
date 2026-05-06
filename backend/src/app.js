@@ -11,31 +11,30 @@ import { verifyToken } from './middleware/auth.js';
 
 const app = express();
 
+// 1. MIDDLEWARE UTAMA (Harus di paling atas)
 app.use(helmet());
-app.use(cors({ origin: process.env.CORS_ORIGIN }));
+app.use(cors({ origin: '*' })); // Mengizinkan akses dari mana saja (HP & Browser)
 app.use(morgan('dev'));
 app.use(express.json());
+
+// 2. ROUTES
+app.get('/v1', (req, res) => {
+    ok(res, { message: "LRC Run API sedang berjalan!" });
+});
 
 app.use('/v1/auth', authRoutes);
 app.use('/v1/user', userRoutes);
 app.use('/v1/runs', runRoutes);
 app.get('/v1/run/:id', verifyToken, getRunById); 
 
-app.get('/v1', (req, res) => {
-    ok(res, { message: "LRC Run API sedang berjalan!" });
-});
-
+// 3. ERROR HANDLING (Harus di paling bawah)
 app.use((req, res) => {
     fail(res, 'NOT_FOUND', 'Endpoint tidak ditemukan', 404);
 });
 
 app.use((err, req, res, next) => {
-    console.error(err.stack);
+    console.error("SERVER ERROR:", err.stack);
     fail(res, 'SERVER_ERROR', 'Internal server error', 500);
 });
-
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*' 
-}));
 
 export default app;

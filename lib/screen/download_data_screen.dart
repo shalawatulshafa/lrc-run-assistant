@@ -60,17 +60,18 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
       await Future.delayed(const Duration(milliseconds: 500));
 
       // 2. Ambil data hasil analitik dari Node.js
-      final String id = serverResponse['data']['runId'];
-      final summary = serverResponse['data']['summary'];
-      
+      final String id = (serverResponse['runId'] ?? '').toString();
+      final dynamic summary = serverResponse['summary'] ?? {};
+
       final RunSession newSession = RunSession(
         id: id,
         title: 'Lari LRC ${widget.targetPattern}',
         date: DateTime.now(),
-        distance: 0.0, // Isi 0 karena belum ada perhitungan jarak
-        avgSpm: summary['avgSpm'],
+        distance: 0.0,
+        // Gunakan 'as num' lalu toInt() untuk menghindari error double vs int sebelumnya
+        avgSpm: ((summary['avgSpm'] ?? 0) as num).toInt(),
         compliance: summary['compliance'],
-        duration: summary['formattedDuration'], // "MM:SS" dari backend Node.js
+        duration: (summary['formattedDuration'] ?? summary['duration'] ?? "00:00").toString(),
       );
 
       // 3. Simpan ke SQLite HP
