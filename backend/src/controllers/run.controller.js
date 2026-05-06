@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma.js';
 import { ok, fail } from '../lib/apiResponse.js';
+import { analyzeRunData } from '../services/analyzer.service.js';
 
 // GET /runs
 export const getRuns = async (req, res, next) => {
@@ -42,29 +43,37 @@ export const getRunById = async (req, res, next) => {
 
 // POST /runs/sync
 export const syncRun = async (req, res, next) => {
-    try {
-        const userId = req.user.userId;
-        const { dateTime, distance, avgSpm, compliance, duration } = req.body;
+  try {
+    const userId = req.user.userId;
+    const { dateTime, targetPattern, sensorData } = req.body; 
+    // sensorData adalah array dari {timestamp, breath, step, spm}
 
-        const dateObj = new Date(dateTime);
-        const title = `Run on ${dateObj.toLocaleDateString()}`;
-
-        const newRun = await prisma.run.create({
-            data: {
-                userId,
-                title,
-                date: dateObj,
-                distance,
-                avgSpm,
-                compliance,
-                duration,
-            },
-        });
-
-        return ok(res, { runId: newRun.id, title: newRun.title }, 201);
-    } catch (error) {
-        next(error);
+    if (!sensorData || !targetPattern) {
+      return fail(res, 'VALIDATION_ERROR', 'Data sensor dan target pola diperlukan', 400);
     }
+
+    const analysis = analyzeRunData(sensorData, targetPattern);
+
+    const newRun = await prisma.run.create({
+      data: {
+        userId,
+        date: new Date(dateTime),
+        title: `Lari LRC ${targetPattern}`,
+        distance: 0, 
+        avgSpm: analysis.avgSpm,
+        compliance: analysis.compliance,
+        duration: analysis.duration,
+        rawLrcData: analysis.graphData 
+      },
+    });
+
+    return ok(res, { 
+        runId: newRun.id, 
+        summary: analysis 
+    }, 201);
+  } catch (error) {
+    next(error);
+  }
 };
 
 // DELETE /runs/:id

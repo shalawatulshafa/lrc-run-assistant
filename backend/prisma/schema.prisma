@@ -25,19 +25,15 @@ model User {
 }
 
 model Run {
-  id         String   @id @default(cuid())
-  userId     String
-  title      String
-  date       DateTime
-  distance   Float
-  avgSpm     Int
-  compliance Int
-  duration   Int
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  // This links the run to a specific user
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId, date])
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id])
+  title          String
+  date           DateTime @default(now())
+  duration       Int      // Dalam detik
+  avgSpm         Int
+  compliance     Int
+  distance       Float
+  
+  rawLrcData     Json
 }

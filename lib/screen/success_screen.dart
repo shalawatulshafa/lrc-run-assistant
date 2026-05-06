@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class SuccessScreen extends StatefulWidget {
   final bool hasNewData;
-  final String? message; // 🔥 TAMBAHKAN - untuk pesan kustom (opsional)
+  final String? message;
+  final BluetoothDevice? connectedDevice;
 
   const SuccessScreen({
     super.key, 
     this.hasNewData = false,
     this.message,
+    this.connectedDevice,
   });
 
   @override
@@ -18,10 +21,14 @@ class _SuccessScreenState extends State<SuccessScreen> {
   @override
   void initState() {
     super.initState();
-    // 🔥 TAMBAHKAN DELAY AGAR USER BISA MEMBACA PESAN
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) {
-        Navigator.pop(context, true);
+        // 🔥 Mengembalikan Map berisi data koneksi lengkap
+        Navigator.pop(context, {
+          'connected': true,
+          'hasNewData': widget.hasNewData,
+          'device': widget.connectedDevice,
+        });
       }
     });
   }
@@ -34,7 +41,6 @@ class _SuccessScreenState extends State<SuccessScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Pesan Utama
             Text(
               widget.message ?? "Koneksi Berhasil!",
               style: const TextStyle(
@@ -44,24 +50,6 @@ class _SuccessScreenState extends State<SuccessScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            
-            // Icon Sukses
-            Container(
-              width: 100,
-              height: 100,
-              decoration: const BoxDecoration(
-                color: Color(0xFFF77226),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.check, 
-                color: Colors.white, 
-                size: 60,
-              ),
-            ),
-            const SizedBox(height: 30),
-            
-            // Status Data
             if (widget.hasNewData)
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
@@ -102,14 +90,7 @@ class _SuccessScreenState extends State<SuccessScreen> {
                   ],
                 ),
               ),
-            
             const SizedBox(height: 30),
-            
-            // 🔥 TAMBAHKAN INDIKATOR LOADING ATAU COUNTDOWN (OPSIONAL)
-            // CircularProgressIndicator(
-            //   strokeWidth: 2,
-            //   valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFF77226)),
-            // ),
           ],
         ),
       ),

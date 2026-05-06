@@ -4,10 +4,14 @@ import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
 import 'download_data_screen.dart';
 import 'settings_screen.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 
 class DashboardRunners extends StatefulWidget {
   final VoidCallback? onJumpToHistory;
   final bool isConnectedFromMain;
+  final BluetoothDevice? connectedDevice;
   final VoidCallback? onDataSaved;
   final bool hasNewDataFromBle;
 
@@ -17,6 +21,7 @@ class DashboardRunners extends StatefulWidget {
     this.isConnectedFromMain = false,
     this.onDataSaved,
     this.hasNewDataFromBle = false,
+    this.connectedDevice,
   });
 
   @override
@@ -244,11 +249,38 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 child: ElevatedButton.icon(
                   onPressed: canDownload
                       ? () async {
+                          // 1. Ambil token dari SharedPreferences
+                          final prefs = await SharedPreferences.getInstance();
+                          final String jwtToken = prefs.getString('authToken') ?? '';
+
+                          if (jwtToken.isEmpty) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Sesi login tidak valid, harap login ulang.')),
+                            );
+                            return;
+                          }
+
+                          // Pastikan objek device benar-benar ada
+                          if (widget.connectedDevice == null) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Perangkat tidak ditemukan.')),
+                            );
+                            return;
+                          }
+
+                          if (!context.mounted) return;
+
+                          // 2. Pindah halaman menuju layar Download yang baru
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => DownloadDataScreen(
                                 onDataDownloaded: markDataDownloaded,
+                                connectedDevice: widget.connectedDevice!, // 🔑 Device dikirim
+                                jwtToken: jwtToken,                       // 🔑 Token dikirim
+                                targetPattern: "3:2",                     // 🔑 Pola target dikirim
                               ),
                             ),
                           );

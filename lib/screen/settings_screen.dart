@@ -483,7 +483,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               SizedBox(height: 8),
               Text('Tim Pengembang:', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('- Shalawatul Shafa - Frontend'),
-              Text('- Kayla Pramudio Bagaskara - Backend'),
+              Text('- Kayla Pramudio Bagas Aryasatya - Backend & Deployment'),
             ],
           ),
           actions: [

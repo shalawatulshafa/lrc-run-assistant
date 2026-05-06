@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart'; // Import Baru
+import 'dart:async';
+import 'dart:io'; // Import Baru untuk mengecek OS Android
+
 import 'success_screen.dart';
-import 'failed_screen.dart'; // 🔥 TAMBAHKAN IMPORT FAILED SCREEN
+import 'failed_screen.dart'; 
 
 class ConnectingScreen extends StatefulWidget {
   final VoidCallback? onConnected;
@@ -19,8 +24,9 @@ class ConnectingScreen extends StatefulWidget {
 class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-  bool _hasNewData = false;
-  bool _isConnecting = true;
+
+  BluetoothDevice? _foundDevice; 
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
 
   @override
   void initState() {
@@ -34,103 +40,104 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
       CurvedAnimation(parent: _controller, curve: Curves.easeOut),
     );
 
-    _connectAndCheckData();
+    _startRealBluetoothConnection();
   }
 
-  Future<void> _connectAndCheckData() async {
+  Future<void> _startRealBluetoothConnection() async {
     try {
-      // Simulasi koneksi BLE (4 detik)
-      await Future.delayed(const Duration(seconds: 4));
-      
-      // 🔥 SIMULASI SUKSES/GAGAL KONEK
-      // Ganti nilai ini untuk testing
-      bool connectionSuccess = true; // true = sukses, false = gagal
-      
-      if (!connectionSuccess && mounted) {
-        // 🔥 TAMPILKAN FAILED SCREEN
-        final retry = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => FailedScreen(
-              message: "Koneksi Gagal",
-              subtitle: "Pastikan chest strap dalam mode SYNC\natau baterai perangkat cukup",
-              onRetry: () {
-                Navigator.pop(context, true);
-              },
-            ),
-          ),
-        );
-        
-        if (retry == true) {
-          // Ulangi koneksi
-          _connectAndCheckData();
-          return;
-        } else {
-          if (mounted) Navigator.pop(context, false);
-          return;
+      if (Platform.isAndroid) {
+        Map<Permission, PermissionStatus> statuses = await [
+          Permission.bluetoothScan,
+          Permission.bluetoothConnect,
+          Permission.location,
+        ].request();
+
+        if (statuses[Permission.bluetoothScan] != PermissionStatus.granted ||
+            statuses[Permission.bluetoothConnect] != PermissionStatus.granted) {
+          throw Exception("Izin Bluetooth ditolak oleh pengguna.");
         }
       }
-      
-      // Jika sukses konek
-      if (mounted) {
-        setState(() {
-          _isConnecting = false;
-        });
-        
-        // Panggil callback jika ada
-        if (widget.onConnected != null) {
-          widget.onConnected!();
+
+      if (await FlutterBluePlus.adapterState.first == BluetoothAdapterState.off) {
+        throw Exception("Bluetooth mati");
+      }
+
+      await FlutterBluePlus.startScan(timeout: const Duration(seconds: 15));
+
+      _scanSubscription = FlutterBluePlus.onScanResults.listen((results) {
+        for (ScanResult r in results) {
+          if (r.device.platformName == "LRC-Tracker-ESP32" || r.device.advName == "LRC-Tracker-ESP32") {
+            _foundDevice = r.device;
+            FlutterBluePlus.stopScan(); 
+            break;
+          }
         }
+      });
+
+      await Future.doWhile(() async {
+        await Future.delayed(const Duration(milliseconds: 500));
+        return FlutterBluePlus.isScanningNow && _foundDevice == null;
+      });
+
+      if (_foundDevice != null) {
+        await _foundDevice!.connect(timeout: const Duration(seconds: 5));
         
-        // Cek apakah ada data baru dari chest strap
+        // Panggil API untuk memastikan ada data (Saat ini di-mocking true)
         bool hasData = false;
         if (widget.onCheckData != null) {
-          hasData = await widget.onCheckData!();
-          setState(() {
-            _hasNewData = hasData;
-          });
+          hasData = await widget.onCheckData!(); 
         }
-        
-        // Navigasi ke success screen
-        final result = await Navigator.push(
+
+        widget.onConnected?.call();
+
+        if (!mounted) return;
+
+        // 🔥 PERUBAHAN UTAMA DI SINI 🔥
+        // Kita tunggu SuccessScreen selesai dan ambil hasil Map-nya
+        final resultData = await Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => SuccessScreen(
-              hasNewData: _hasNewData,
+              hasNewData: hasData,
+              connectedDevice: _foundDevice, 
             ),
           ),
         );
-        
-        if (result == true && mounted) {
-          Navigator.pop(context, true);
-        }
+
+        if (!mounted) return;
+        // Lempar (estafet) data Map tersebut kembali ke MainNavigation
+        Navigator.pop(context, resultData); 
+
+      } else {
+        throw Exception("Perangkat ESP32 tidak ditemukan. Pastikan alat menyala.");
       }
+
     } catch (e) {
-      // 🔥 HANDLE ERROR
-      if (mounted) {
-        final retry = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => FailedScreen(
-              message: "Koneksi Gagal",
-              subtitle: "Terjadi kesalahan: ${e.toString().substring(0, 50)}...",
-              onRetry: () => Navigator.pop(context, true),
-            ),
+      print("Gagal Connect: $e");
+      if (!mounted) return;
+      
+      // 🔥 PERUBAHAN DI SINI JUGA (Untuk layar gagal) 🔥
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => FailedScreen(
+            message: "Gagal terhubung: ${e.toString().replaceAll('Exception: ', '')}", 
           ),
-        );
-        
-        if (retry == true) {
-          _connectAndCheckData();
-        } else {
-          Navigator.pop(context, false);
-        }
-      }
+        ), 
+      );
+      
+      if (!mounted) return;
+      Navigator.pop(context, null); // Kembali ke Beranda dengan nilai null
+      
+    } finally {
+      _scanSubscription?.cancel();
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _scanSubscription?.cancel(); 
     super.dispose();
   }
 
@@ -138,23 +145,23 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: false,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
+          onPressed: () {
+            FlutterBluePlus.stopScan(); 
+            Navigator.pop(context);
+          },
+        ),
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text(
-              "Menghubungkan ke Chest Strap...",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              "Pastikan chest strap dalam mode SYNC",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 30),
             SizedBox(
-              height: 250,
+              height: 200,
               width: double.infinity,
               child: Stack(
                 alignment: Alignment.center,

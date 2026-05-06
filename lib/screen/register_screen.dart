@@ -1,41 +1,54 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import '../utils/snackbar_helper.dart';
-import 'register_screen.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class RegisterScreen extends StatefulWidget {
+  const RegisterScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _RegisterScreenState extends State<RegisterScreen> {
+  final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+  
   bool _isLoading = false;
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
 
-  Future<void> _login() async {
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      SnackbarHelper.showError(context, 'Email dan password harus diisi');
+  Future<void> _register() async {
+    if (_nameController.text.isEmpty || 
+        _emailController.text.isEmpty || 
+        _passwordController.text.isEmpty || 
+        _confirmPasswordController.text.isEmpty) {
+      SnackbarHelper.showError(context, 'Semua kolom harus diisi');
+      return;
+    }
+
+    if (_passwordController.text != _confirmPasswordController.text) {
+      SnackbarHelper.showError(context, 'Konfirmasi password tidak cocok');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      final Map<String, dynamic> result = await ApiService.login(
+      // Sesuai dengan parameter di api_service.dart: (email, name, password)
+      final Map<String, dynamic> result = await ApiService.register(
         _emailController.text.trim(),
+        _nameController.text.trim(),
         _passwordController.text,
       );
 
       final Map<String, dynamic> user = (result['user'] as Map<String, dynamic>? ?? <String, dynamic>{});
       final String token = result['token']?.toString() ?? '';
       final String email = user['email']?.toString() ?? _emailController.text.trim();
-      final String name = user['name']?.toString() ?? email.split('@').first;
+      final String name = user['name']?.toString() ?? _nameController.text.trim();
 
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isLoggedIn', true);
@@ -44,7 +57,7 @@ class _LoginScreenState extends State<LoginScreen> {
       await prefs.setString('userName', name);
 
       if (!mounted) return;
-      SnackbarHelper.showSuccess(context, 'Login berhasil');
+      SnackbarHelper.showSuccess(context, 'Pendaftaran berhasil');
       Navigator.pushReplacementNamed(context, '/main');
     } catch (e) {
       if (!mounted) return;
@@ -73,7 +86,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 const Icon(Icons.directions_run, size: 60, color: Color(0xFFF77226)),
                 const SizedBox(height: 20),
                 const Text(
-                  'Login',
+                  'Daftar',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,
@@ -81,10 +94,31 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
                 Text(
-                  'Masuk untuk melanjutkan',
+                  'Buat akun untuk memulai',
                   style: TextStyle(color: Colors.grey[600], fontSize: 16),
                 ),
                 const SizedBox(height: 40),
+                
+                // Field Nama
+                TextField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Nama Lengkap',
+                    prefixIcon: const Icon(Icons.person_outline, color: Color(0xFFF77226)),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFF77226)),
+                    ),
+                  ),
+                  keyboardType: TextInputType.name,
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 20),
+                
+                // Field Email
                 TextField(
                   controller: _emailController,
                   decoration: InputDecoration(
@@ -102,6 +136,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   textInputAction: TextInputAction.next,
                 ),
                 const SizedBox(height: 20),
+                
+                // Field Password
                 TextField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
@@ -122,14 +158,41 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderSide: const BorderSide(color: Color(0xFFF77226)),
                     ),
                   ),
+                  textInputAction: TextInputAction.next,
+                ),
+                const SizedBox(height: 20),
+                
+                // Field Konfirmasi Password
+                TextField(
+                  controller: _confirmPasswordController,
+                  obscureText: _obscureConfirmPassword,
+                  decoration: InputDecoration(
+                    labelText: 'Konfirmasi Password',
+                    prefixIcon: const Icon(Icons.lock_reset_outlined, color: Color(0xFFF77226)),
+                    suffixIcon: IconButton(
+                      icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () {
+                        setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
+                      },
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFF77226)),
+                    ),
+                  ),
                   textInputAction: TextInputAction.done,
-                  onEditingComplete: _login,
+                  onEditingComplete: _register,
                 ),
                 const SizedBox(height: 30),
+                
+                // Tombol Daftar
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isLoading ? null : _login,
+                    onPressed: _isLoading ? null : _register,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFF77226),
                       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -147,27 +210,26 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                           )
                         : const Text(
-                            'Login',
+                            'Daftar',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
+                              color: Colors.white,
                             ),
                           ),
                   ),
                 ),
                 const SizedBox(height: 20),
-                // Cari bagian ini di login_screen.dart Anda (sekitar baris 153)
+                
+                // Navigasi Kembali ke Login
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text('Belum punya akun? '),
+                    const Text('Sudah punya akun? '),
                     TextButton(
-                      onPressed: () {
-                        // Lebih ringkas menggunakan named route!
-                        Navigator.pushNamed(context, '/register');
-                      },
+                      onPressed: () => Navigator.pop(context),
                       child: const Text(
-                        'Daftar',
+                        'Login',
                         style: TextStyle(color: Color(0xFFF77226)),
                       ),
                     ),
@@ -184,9 +246,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   void dispose() {
+    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
+    _confirmPasswordController.dispose();
     super.dispose();
   }
 }
-

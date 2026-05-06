@@ -1,4 +1,6 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart'; // 🔥 IMPORT BARU
+
 import 'dashboard_runners.dart';
 import 'history_screen.dart';
 import 'connecting_screen.dart';
@@ -15,6 +17,7 @@ class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
   bool _deviceConnected = false;
   bool _hasNewData = false;
+  BluetoothDevice? _connectedDevice; // 🔥 VARIABEL BARU
 
   final GlobalKey<HistoryScreenState> _historyKey = GlobalKey<HistoryScreenState>();
   final GlobalKey<DashboardRunnersState> _dashboardKey = GlobalKey<DashboardRunnersState>();
@@ -41,7 +44,7 @@ class _MainNavigationState extends State<MainNavigation> {
     try {
       return await ApiService.hasNewData();
     } catch (_) {
-      return true;
+      return true; // Asumsikan ada data jika backend belum siap
     }
   }
 
@@ -53,61 +56,60 @@ class _MainNavigationState extends State<MainNavigation> {
       MaterialPageRoute(
         builder: (context) => ConnectingScreen(
           onConnected: () {
-            debugPrint('BLE Connected - Chest strap terhubung');
-          },
-          onCheckData: () async {
-            final bool hasData = await _checkChestStrapData();
             setState(() {
-              _hasNewData = hasData;
+              _deviceConnected = true;
             });
-            return hasData;
           },
+          onCheckData: _checkChestStrapData,
         ),
       ),
     );
 
-    if (result == true) {
+    // 🔥 TANGKAP DATA DARI SUCCESS SCREEN 🔥
+    if (result is Map && result['connected'] == true) {
       setState(() {
         _deviceConnected = true;
+        _hasNewData = result['hasNewData'] ?? true;
+        _connectedDevice = result['device']; // Simpan perangkat
       });
-      _refreshDashboard();
-      _refreshHistory();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> pages = [
-      DashboardRunners(
-        key: _dashboardKey,
-        onJumpToHistory: () => _onItemTapped(1),
-        isConnectedFromMain: _deviceConnected,
-        onDataSaved: _refreshHistory,
-        hasNewDataFromBle: _hasNewData,
-      ),
-      HistoryScreen(key: _historyKey),
-    ];
-
     return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: IndexedStack(index: _selectedIndex, children: pages),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _onSyncPressed,
-        backgroundColor: const Color(0xFFF77226),
-        shape: const CircleBorder(),
-        child: const Icon(Icons.add, size: 35, color: Colors.white),
+      backgroundColor: Colors.white,
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          DashboardRunners(
+            key: _dashboardKey,
+            isConnectedFromMain: _deviceConnected,
+            hasNewDataFromBle: _hasNewData, // 🔥 PASTIKAN INI MASUK
+            connectedDevice: _connectedDevice, // 🔥 PASTIKAN INI MASUK
+            onDataSaved: _refreshHistory,
+            onJumpToHistory: () => _onItemTapped(1),
+          ),
+          HistoryScreen(key: _historyKey),
+        ],
+      ),
+      floatingActionButton: Container(
+        margin: const EdgeInsets.only(top: 30),
+        height: 64,
+        width: 64,
+        child: FloatingActionButton(
+          backgroundColor: const Color(0xFFF77226),
+          elevation: 4,
+          shape: const CircleBorder(),
+          onPressed: _onSyncPressed,
+          child: const Icon(Icons.add, size: 32, color: Colors.white),
+        ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 10,
-              offset: const Offset(0, -3),
-            ),
-          ],
+      bottomNavigationBar: Theme(
+        data: ThemeData(
+          splashColor: Colors.transparent,
+          highlightColor: Colors.transparent,
         ),
         child: BottomAppBar(
           padding: EdgeInsets.zero,

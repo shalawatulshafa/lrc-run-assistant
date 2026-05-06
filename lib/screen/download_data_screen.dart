@@ -1,66 +1,111 @@
 ﻿import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
+import '../services/run_sync_service.dart'; // Pastikan file service ini sudah Anda buat
 import 'detail_lari_screen.dart';
 
 class DownloadDataScreen extends StatefulWidget {
   final VoidCallback? onDataDownloaded;
+  
+  // 🔥 INI 3 VARIABEL BARU YANG DIMINTA OLEH ERROR TADI
+  final BluetoothDevice connectedDevice;
+  final String jwtToken;
+  final String targetPattern;
 
-  const DownloadDataScreen({super.key, this.onDataDownloaded});
+  const DownloadDataScreen({
+    super.key, 
+    this.onDataDownloaded,
+    required this.connectedDevice,
+    required this.jwtToken,
+    required this.targetPattern,
+  });
 
   @override
   State<DownloadDataScreen> createState() => _DownloadDataScreenState();
 }
 
 class _DownloadDataScreenState extends State<DownloadDataScreen> {
-  double _progress = 0;
+  double? _progress; // Dibuat null agar bar loading bergerak bolak-balik (indeterminate)
+  String _statusText = 'Menghubungkan ke sensor...';
 
   @override
   void initState() {
     super.initState();
-    _startDownload();
+    _startRealDownload();
   }
 
-  Future<void> _startDownload() async {
-    for (int i = 0; i <= 100; i++) {
-      if (!mounted) return;
-      await Future.delayed(const Duration(milliseconds: 50));
+  Future<void> _startRealDownload() async {
+    try {
       setState(() {
-        _progress = i / 100;
+        _statusText = 'Mengunduh data lari dari perangkat...';
       });
-    }
 
-    if (!mounted) return;
+      // 1. Panggil Service Sinkronisasi (Menyedot data dari ESP32)
+      final serverResponse = await RunSyncService().startSync(
+        widget.connectedDevice, 
+        widget.targetPattern, 
+        widget.jwtToken
+      );
 
-    final DateTime now = DateTime.now();
-    final String id = now.millisecondsSinceEpoch.toString();
-    final String autoTitle =
-        'Lari 5.2km - ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+      if (!mounted) return;
 
-    final RunSession draftSession = RunSession(
-      id: id,
-      title: autoTitle,
-      date: now,
-      distance: 5.2,
-      avgSpm: 164,
-      compliance: 80,
-      duration: '42:15',
-    );
+      setState(() {
+        _progress = 1.0;
+        _statusText = 'Sinkronisasi Selesai!';
+      });
 
-    final RunSession savedSession = await RunHistoryStorage.addRun(draftSession) ?? draftSession;
-    widget.onDataDownloaded?.call();
+      // Beri jeda agar tulisan 100% / Selesai terlihat oleh user
+      await Future.delayed(const Duration(milliseconds: 500));
 
-    if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DetailLariScreen(
-          runSession: savedSession,
-          onDataUpdated: () {},
+      // 2. Ambil data hasil analitik dari Node.js
+      final String id = serverResponse['data']['runId'];
+      final summary = serverResponse['data']['summary'];
+      
+      final RunSession newSession = RunSession(
+        id: id,
+        title: 'Lari LRC ${widget.targetPattern}',
+        date: DateTime.now(),
+        distance: 0.0, // Isi 0 karena belum ada perhitungan jarak
+        avgSpm: summary['avgSpm'],
+        compliance: summary['compliance'],
+        duration: summary['formattedDuration'], // "MM:SS" dari backend Node.js
+      );
+
+      // 3. Simpan ke SQLite HP
+      final RunSession savedSession = await RunHistoryStorage.addRun(newSession) ?? newSession;
+      
+      // Beritahu Dashboard bahwa data baru sudah masuk
+      widget.onDataDownloaded?.call();
+
+      if (!mounted) return;
+
+      // 4. Tutup layar loading, buka layar hasil lari
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DetailLariScreen(
+            runSession: savedSession,
+            onDataUpdated: () {},
+          ),
         ),
-      ),
-    );
+      );
+
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _progress = 0.0;
+        _statusText = 'Pengunduhan Gagal. Silakan coba lagi.';
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
@@ -73,7 +118,10 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: _progress == 1.0 ? () => Navigator.pop(context, false) : null,
+          // Hanya izinkan back jika error (0.0) atau selesai (1.0)
+          onPressed: (_progress == 1.0 || _progress == 0.0) 
+              ? () => Navigator.pop(context, false) 
+              : null,
         ),
       ),
       body: Center(
@@ -81,7 +129,7 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _progress < 1.0 ? 'Pengunduhan masih berjalan,\nharap tunggu' : 'Pengunduhan Selesai!',
+              _statusText,
               textAlign: TextAlign.center,
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
@@ -93,21 +141,22 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(10),
                     child: LinearProgressIndicator(
-                      value: _progress,
+                      value: _progress, 
                       minHeight: 12,
                       backgroundColor: Colors.grey[200],
                       valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFD6885D)),
                     ),
                   ),
                   const SizedBox(height: 15),
-                  Text(
-                    '${(_progress * 100).toInt()}%',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFD6885D),
+                  if (_progress != null)
+                    Text(
+                      '${(_progress! * 100).toInt()}%',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFD6885D),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),

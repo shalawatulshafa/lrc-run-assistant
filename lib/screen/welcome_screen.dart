@@ -2,15 +2,17 @@ import 'package:flutter/material.dart';
 import 'login_screen.dart';
 
 class WelcomeScreen extends StatelessWidget {
+  const WelcomeScreen({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFD6885D),
+      backgroundColor: const Color(0xFFD6885D),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(top: 120.0, left: 30.0, right: 30.0, bottom: 40.0),
+          const Padding(
+            padding: EdgeInsets.only(top: 120.0, left: 30.0, right: 30.0, bottom: 40.0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -36,7 +38,7 @@ class WelcomeScreen extends StatelessWidget {
           Expanded(
             child: Container(
               width: double.infinity,
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.only(
                   topLeft: Radius.circular(40),
@@ -52,19 +54,17 @@ class WelcomeScreen extends StatelessWidget {
                       iconColor: Colors.blue,
                       text: "Login with Email",
                       onPressed: () {
-                        Navigator.pushReplacementNamed(context, '/login');
+                        Navigator.pushNamed(context, '/login');
                       },
                     ),
-                    SizedBox(height: 20),
+                    const SizedBox(height: 20),
                     _buildLoginButton(
                       icon: Icons.person_add,
                       iconColor: Colors.green,
                       text: "Register",
                       onPressed: () {
-                        // Bisa ditambahkan halaman register nanti
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text("Fitur akan segera hadir")),
-                        );
+                        // 🔥 Diubah: Sekarang mengarah ke route /register
+                        Navigator.pushNamed(context, '/register');
                       },
                     ),
                   ],
@@ -93,10 +93,10 @@ class WelcomeScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, color: iconColor, size: 30),
-            SizedBox(width: 10),
+            const SizedBox(width: 10),
             Text(
               text,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.black87,
                 fontWeight: FontWeight.w600,
                 fontSize: 16,

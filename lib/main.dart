@@ -3,6 +3,7 @@ import 'screen/welcome_screen.dart';
 import 'screen/main_navigation.dart';
 import 'screen/settings_screen.dart';
 import 'screen/login_screen.dart'; // Akan kita buat
+import 'screen/register_screen.dart';
 
 void main() {
   runApp(const MyApp());
@@ -23,9 +24,10 @@ class MyApp extends StatelessWidget {
       initialRoute: '/',
       routes: {
         '/': (context) => WelcomeScreen(),
-        '/login': (context) => LoginScreen(),
-        '/main': (context) => MainNavigation(),
-        '/settings': (context) => SettingsScreen(),
+        '/login': (context) => const LoginScreen(),
+        '/main': (context) => const MainNavigation(),
+        '/settings': (context) => const SettingsScreen(),
+        '/register': (context) => const RegisterScreen(),
       },
     );
   }
