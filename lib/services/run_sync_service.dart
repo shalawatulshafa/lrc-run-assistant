@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async'; // 🔥 Tambahan untuk Completer
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:http/http.dart' as http;
+import 'api_service.dart';
 
 class RunSyncService {
   final String serviceUuid = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
@@ -108,23 +109,6 @@ class RunSyncService {
       "sensorData": sensorDataList
     };
 
-    // 🔥 URL Upload (Pastikan IP 192.168.0.194 ini sedang aktif)
-    final url = Uri.parse("http://10.8.100.153:3000/v1/runs/sync"); 
-    
-    final response = await http.post(
-      url,
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": "Bearer $jwtToken"
-      },
-      body: jsonEncode(payload),
-    );
-
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      // Decode dan kembalikan JSON dari backend
-      return jsonDecode(response.body); 
-    } else {
-      throw Exception("Gagal Upload ke Server: ${response.statusCode}");
-    }
+    return await ApiService.syncRunData(jwtToken, payload);
   }
 }

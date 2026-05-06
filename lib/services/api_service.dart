@@ -6,7 +6,7 @@ class ApiService {
   // For Android emulator, use: http://10.0.2.2:3000/v1
   static const String baseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.8.100.153:3000/v1',
+    defaultValue: 'http://10.8.100.133:3000/v1',
   );
 
   static Map<String, String> _headers({String? token}) {

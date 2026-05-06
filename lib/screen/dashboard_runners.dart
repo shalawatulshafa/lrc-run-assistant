@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async'; // 🔥 IMPORT BARU untuk mengatur Stream Baterai
+import 'package:flutter/material.dart';
 
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
@@ -6,7 +7,6 @@ import 'download_data_screen.dart';
 import 'settings_screen.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 
 class DashboardRunners extends StatefulWidget {
   final VoidCallback? onJumpToHistory;
@@ -29,22 +29,24 @@ class DashboardRunners extends StatefulWidget {
 }
 
 class DashboardRunnersState extends State<DashboardRunners> {
-  int batteryLevel = 85;
+  int batteryLevel = 0; // 🔥 Ubah default menjadi 0 (Nanti diupdate otomatis)
   RunSession? _latestRunData;
   bool _isLoadingLatest = true;
   bool _hasNewData = false;
+
+  // 🔥 SUBSCRIPTION BATERAI
+  StreamSubscription<List<int>>? _batterySubscription;
 
   @override
   void initState() {
     super.initState();
     _loadLatestRunData();
     _hasNewData = widget.hasNewDataFromBle;
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadLatestRunData();
+    
+    // 🔥 Jika saat pertama kali dibuka alat sudah konek, langsung baca baterai
+    if (widget.isConnectedFromMain && widget.connectedDevice != null) {
+      _initBatteryListener();
+    }
   }
 
   @override
@@ -55,6 +57,72 @@ class DashboardRunnersState extends State<DashboardRunners> {
         _hasNewData = widget.hasNewDataFromBle;
       });
     }
+
+    // 🔥 Jika perangkat baru saja terhubung (transisi dari false ke true)
+    if (widget.isConnectedFromMain && !oldWidget.isConnectedFromMain && widget.connectedDevice != null) {
+      _initBatteryListener();
+    }
+    
+    // 🔥 Jika perangkat terputus, matikan listener
+    if (!widget.isConnectedFromMain && oldWidget.isConnectedFromMain) {
+      _cancelBatteryListener();
+      setState(() => batteryLevel = 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _cancelBatteryListener(); // 🔥 Hapus stream memory saat layar ditutup
+    super.dispose();
+  }
+
+  // 🔥 FUNGSI UTAMA UNTUK MENDENGARKAN BATERAI
+  Future<void> _initBatteryListener() async {
+    try {
+      final device = widget.connectedDevice!;
+      
+      // Minta perangkat untuk memberitahu layanan apa saja yang dia punya
+      List<BluetoothService> services = await device.discoverServices();
+
+      for (var service in services) {
+        // Cari UUID Baterai Standar (180F)
+        if (service.uuid.toString().toUpperCase().contains("180F")) {
+          for (var characteristic in service.characteristics) {
+            // Cari Karakteristik Level Baterai (2A19)
+            if (characteristic.uuid.toString().toUpperCase().contains("2A19")) {
+              
+              // Aktifkan Notifikasi Baterai
+              await characteristic.setNotifyValue(true);
+
+              // Dengarkan perubahan persentase (value[0] = 0-100)
+              _batterySubscription = characteristic.lastValueStream.listen((value) {
+                if (value.isNotEmpty && mounted) {
+                  setState(() {
+                    batteryLevel = value[0];
+                  });
+                }
+              });
+              
+              // Coba baca secara manual sekali saat pertama kali init
+              List<int> initialValue = await characteristic.read();
+              if (initialValue.isNotEmpty && mounted) {
+                setState(() {
+                  batteryLevel = initialValue[0];
+                });
+              }
+              break; 
+            }
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint("Gagal mendengarkan status baterai: $e");
+    }
+  }
+
+  void _cancelBatteryListener() {
+    _batterySubscription?.cancel();
+    _batterySubscription = null;
   }
 
   Future<void> _loadLatestRunData() async {
@@ -249,7 +317,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 child: ElevatedButton.icon(
                   onPressed: canDownload
                       ? () async {
-                          // 1. Ambil token dari SharedPreferences
                           final prefs = await SharedPreferences.getInstance();
                           final String jwtToken = prefs.getString('authToken') ?? '';
 
@@ -261,7 +328,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
                             return;
                           }
 
-                          // Pastikan objek device benar-benar ada
                           if (widget.connectedDevice == null) {
                             if (!context.mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -272,15 +338,14 @@ class DashboardRunnersState extends State<DashboardRunners> {
 
                           if (!context.mounted) return;
 
-                          // 2. Pindah halaman menuju layar Download yang baru
                           final result = await Navigator.push(
                             context,
                             MaterialPageRoute(
                               builder: (context) => DownloadDataScreen(
                                 onDataDownloaded: markDataDownloaded,
-                                connectedDevice: widget.connectedDevice!, // 🔑 Device dikirim
-                                jwtToken: jwtToken,                       // 🔑 Token dikirim
-                                targetPattern: "3:2",                     // 🔑 Pola target dikirim
+                                connectedDevice: widget.connectedDevice!, 
+                                jwtToken: jwtToken,                       
+                                targetPattern: "3:2",                     
                               ),
                             ),
                           );
@@ -503,23 +568,14 @@ class DashboardRunnersState extends State<DashboardRunners> {
   }
 
   String _formatDate(DateTime dateTime) {
-    return '${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year}, ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    final DateTime localTime = dateTime.toLocal(); // 🔥 Ikutkan zona waktu lokal HP
+    return '${localTime.day} ${_getMonthName(localTime.month)} ${localTime.year}, ${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 
   String _getMonthName(int month) {
     const months = [
-      'Januari',
-      'Februari',
-      'Maret',
-      'April',
-      'Mei',
-      'Juni',
-      'Juli',
-      'Agustus',
-      'September',
-      'Oktober',
-      'November',
-      'Desember',
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember',
     ];
     return months[month - 1];
   }
@@ -652,4 +708,3 @@ class DashboardRunnersState extends State<DashboardRunners> {
     );
   }
 }
-
