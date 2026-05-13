@@ -22,10 +22,12 @@ class RunSession {
   factory RunSession.fromJson(Map<String, dynamic> json) {
     final dynamic rawDate = json['date'] ?? json['dateTime'];
     DateTime parsedDate;
+    
+    // 🔥 PERBAIKAN: Menambahkan .toLocal() di sini agar waktu dikonversi ke zona waktu HP (WIB / UTC+7)
     if (rawDate is DateTime) {
-      parsedDate = rawDate;
+      parsedDate = rawDate.toLocal();
     } else {
-      parsedDate = DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now();
+      parsedDate = (DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now()).toLocal();
     }
 
     final dynamic rawDistance = json['distance'];

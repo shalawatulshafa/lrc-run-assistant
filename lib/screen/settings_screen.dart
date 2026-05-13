@@ -19,7 +19,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String userName = '';
   String userEmail = '';
-  bool _isLoading = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -28,6 +28,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadUserData() async {
+    // Tidak perlu setState(_isLoading = true) karena kita mau Silent Refresh
+    
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? token = prefs.getString('authToken');
 
@@ -48,10 +50,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       userEmail = prefs.getString('userEmail') ?? 'email@example.com';
     }
 
-    if (!mounted) return;
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _isLoading = false; // Langsung tampilkan UI setelah data profil dimuat
+      });
+    }
   }
 
   Future<void> _saveUserData(String name, String email) async {
@@ -134,12 +137,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Hapus Data Lokal',
+                          'Hapus Semua Data',
                           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                         ),
                         const SizedBox(height: 5),
                         Text(
-                          'Hapus semua data sesi lari yang tersimpan di perangkat (tidak dapat dikembalikan)',
+                          'Hapus semua data sesi lari secara permanen dari perangkat dan server',
                           style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
                         ),
                       ],
@@ -393,8 +396,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: const Text('Hapus Data Lokal'),
-          content: const Text('Yakin ingin menghapus semua data sesi lari? Tindakan ini tidak dapat dibatalkan.'),
+          title: const Text('Hapus Semua Data'),
+          content: const Text('Yakin ingin menghapus semua data sesi lari? Tindakan ini akan menghapus data secara permanen di perangkat dan di server.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
@@ -402,13 +405,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                await RunHistoryStorage.clear();
+                try {
+                  // 1. Ambil Token
+                  final SharedPreferences prefs = await SharedPreferences.getInstance();
+                  final String? token = prefs.getString('authToken');
 
-                widget.onDataDeleted?.call();
+                  // 2. HAPUS DI SERVER (Jika ada token)
+                  if (token != null && token.isNotEmpty) {
+                    await ApiService.deleteAllRunData(token);
+                  }
 
-                if (mounted) {
-                  Navigator.pop(context);
-                  SnackbarHelper.showSuccess(context, 'Data lokal telah dihapus');
+                  // 3. Hapus di Penyimpanan HP
+                  await RunHistoryStorage.clear();
+                  await prefs.remove('runHistory');
+
+                  // 4. Beri Sinyal Refresh UI
+                  widget.onDataDeleted?.call();
+
+                  if (mounted) {
+                    Navigator.pop(context);
+                    SnackbarHelper.showSuccess(context, 'Semua data lari telah dihapus permanen');
+                  }
+                } catch (e) {
+                  // Jika koneksi error / server gagal hapus
+                  if (mounted) {
+                    Navigator.pop(context);
+                    SnackbarHelper.showError(context, 'Gagal menghapus data di server: $e');
+                  }
                 }
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
@@ -583,12 +606,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
           if (data != null && data.isNotEmpty)
             TextButton(
               onPressed: () async {
-                await prefs.remove('runHistory');
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Data debug telah dihapus')),
-                  );
+                try {
+                  final String? token = prefs.getString('authToken');
+                  if (token != null && token.isNotEmpty) {
+                    await ApiService.deleteAllRunData(token);
+                  }
+                  
+                  await prefs.remove('runHistory');
+                  await RunHistoryStorage.clear();
+                  
+                  widget.onDataDeleted?.call();
+                  
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Semua data (server & lokal) telah dihapus')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    Navigator.pop(context);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Gagal menghapus data di server: $e')),
+                    );
+                  }
                 }
               },
               child: const Text('Hapus Semua', style: TextStyle(color: Colors.red)),

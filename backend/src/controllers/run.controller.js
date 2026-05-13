@@ -99,3 +99,19 @@ export const deleteRun = async (req, res, next) => {
         next(error);
     }
 };
+
+// DELETE /runs
+export const deleteAllRuns = async (req, res, next) => {
+    try {
+        const userId = req.user.userId;
+
+        // Menghapus semua riwayat lari milik user yang sedang login
+        await prisma.run.deleteMany({
+            where: { userId: userId },
+        });
+
+        return ok(res, { message: "Semua data lari berhasil dihapus secara permanen" });
+    } catch (error) {
+        next(error);
+    }
+};

@@ -13,7 +13,7 @@ class HistoryScreen extends StatefulWidget {
 
 class HistoryScreenState extends State<HistoryScreen> {
   List<RunSession> _historyData = [];
-  bool _isLoading = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -39,7 +39,7 @@ class HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _loadHistoryData() async {
-    setState(() => _isLoading = true);
+    setState(() => _isLoading = false);
 
     try {
       final List<RunSession> loadedData = await RunHistoryStorage.getRuns();
@@ -191,17 +191,16 @@ class HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildHistoryCard(BuildContext context, RunSession data) {
     return GestureDetector(
-      onTap: () async {
-        await Navigator.push(
+      onTap: () async { // 🔥 1. Tambahkan async di sini
+        await Navigator.push( // 🔥 2. Tambahkan await di sini
           context,
           MaterialPageRoute(
-            builder: (context) => DetailLariScreen(
-              runId: data.id,
-              onDataUpdated: refreshData,
-            ),
+            builder: (context) => DetailLariScreen(runSession: data),
           ),
         );
-        refreshData();
+        
+        // 🔥 3. Panggil refreshData() setelah kembali dari layar Detail
+        refreshData(); 
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 15),

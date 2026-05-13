@@ -31,7 +31,7 @@ class DashboardRunners extends StatefulWidget {
 class DashboardRunnersState extends State<DashboardRunners> {
   int batteryLevel = 0; // 🔥 Ubah default menjadi 0 (Nanti diupdate otomatis)
   RunSession? _latestRunData;
-  bool _isLoadingLatest = true;
+  bool _isLoadingLatest = false;
   bool _hasNewData = false;
 
   // 🔥 SUBSCRIPTION BATERAI
@@ -126,24 +126,31 @@ class DashboardRunnersState extends State<DashboardRunners> {
   }
 
   Future<void> _loadLatestRunData() async {
-    setState(() {
-      _isLoadingLatest = true;
-    });
+      if (_latestRunData == null) {
+        setState(() {
+          _isLoadingLatest = false;
+        });
+      }
 
-    try {
-      final List<RunSession> runs = await RunHistoryStorage.getRuns();
+      try {
+        final List<RunSession> runs = await RunHistoryStorage.getRuns();
 
-      setState(() {
-        _latestRunData = runs.isNotEmpty ? runs.first : null;
-        _isLoadingLatest = false;
-      });
-    } catch (e) {
-      debugPrint('Error loading latest data: $e');
-      setState(() {
-        _isLoadingLatest = false;
-      });
+        // Gunakan 'mounted' untuk menghindari error saat pindah layar
+        if (mounted) {
+          setState(() {
+            _latestRunData = runs.isNotEmpty ? runs.first : null;
+            _isLoadingLatest = false; // Matikan loading
+          });
+        }
+      } catch (e) {
+        debugPrint('Error loading latest data: $e');
+        if (mounted) {
+          setState(() {
+            _isLoadingLatest = false;
+          });
+        }
+      }
     }
-  }
 
   void refreshLatestData() {
     _loadLatestRunData();

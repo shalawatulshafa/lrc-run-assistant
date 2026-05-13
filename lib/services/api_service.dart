@@ -119,6 +119,16 @@ class ApiService {
     }
   }
 
+  static Future<void> deleteAllRunData(String token) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/runs'), // Mengarah ke route '/' yang baru kita buat
+      headers: _headers(token: token),
+    );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw _toException(response);
+    }
+  }
+
   static Future<bool> hasNewData() async {
     // Backend BLE endpoint is not implemented yet.
     return true;
