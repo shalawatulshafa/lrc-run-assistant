@@ -76,6 +76,33 @@ export const syncRun = async (req, res, next) => {
   }
 };
 
+// UPDATE /runs/:id (Update Judul)
+export const updateRun = async (req, res, next) => {
+    try {
+        const userId = req.user.userId;
+        const runId = req.params.id;
+        const { title } = req.body;
+
+        // Pastikan data ini milik user yang sedang login
+        const run = await prisma.run.findFirst({
+            where: { id: runId, userId: userId },
+        });
+
+        if (!run) {
+            return fail(res, 'NOT_FOUND', 'Data lari tidak ditemukan', 404);
+        }
+
+        const updatedRun = await prisma.run.update({
+            where: { id: runId },
+            data: { title: title },
+        });
+
+        return ok(res, updatedRun);
+    } catch (error) {
+        next(error);
+    }
+};
+
 // DELETE /runs/:id
 export const deleteRun = async (req, res, next) => {
     try {

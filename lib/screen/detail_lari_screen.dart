@@ -101,7 +101,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     }
   }
 
-  // 🔥 FUNGSI BARU: Membuat label waktu dinamis berdasarkan durasi asli
   List<Widget> _buildDynamicTimeLabels(String? durationStr) {
     int totalSeconds = 1800; // Default 30 menit
 
@@ -162,11 +161,32 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     );
   }
 
+  // 🔥 PERBAIKAN LOGIKA: Hanya fungsi ini yang saya ubah (ditambah update API)
   Future<void> _updateTitleInStorage(String newTitle) async {
     final String? id = widget.runId ?? _runSession?.id;
     if (id == null) return;
+
+    // --- 1. UPDATE KE BACKEND SERVER ---
+    try {
+      final SharedPreferences prefs = await SharedPreferences.getInstance();
+      final String? token = prefs.getString('authToken');
+      
+      if (token != null && token.isNotEmpty) {
+        try {
+          await ApiService.updateRunTitle(token, id, newTitle);
+        } catch (e) {
+          print("Gagal update backend, tapi tetap mencoba update lokal: $e");
+        }
+      }
+    } catch (e) {
+      print("Error mengakses token: $e");
+    }
+
+    // --- 2. UPDATE LOKAL (sesuai fungsi original Anda) ---
     await RunHistoryStorage.updateRunTitle(id, newTitle);
+    
     if (!mounted) return;
+    
     setState(() {
       _currentTitle = newTitle;
       _runSession = _runSession?.copyWith(title: newTitle);
@@ -183,7 +203,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     final DateTime localTime = dateTime.toLocal();
     const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
     return '${localTime.day} ${months[localTime.month - 1]} ${localTime.year}, ${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';  
-    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -222,7 +242,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const SizedBox(height: 20),
             Row(
               children: [
-                // 🔥 SUMBU Y: 7 Label dengan jarak otomatis
                 SizedBox(
                   height: 180,
                   child: Column(
@@ -257,7 +276,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
                           child: CustomPaint(size: const Size(800, 180), painter: ChartPainter(_chartData)), 
                         ),
                         const SizedBox(height: 10),
-                        // 🔥 SUMBU X: Label waktu dinamis
                         SizedBox(
                           width: 800,
                           child: Row(
@@ -333,7 +351,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   }
 }
 
-// 🔥 PAINTER: Menggunakan skala statis 1.0 - 7.0 agar sejajar dengan label Y
 class ChartPainter extends CustomPainter {
   final List<double> dataPoints;
   const ChartPainter(this.dataPoints);

@@ -129,6 +129,21 @@ class ApiService {
     }
   }
 
+  static Future<void> updateRunTitle(String token, String runId, String newTitle) async {
+    final response = await http.patch( // atau http.put sesuai API Anda
+      Uri.parse('$baseUrl/runs/$runId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'title': newTitle}),
+    );
+
+    if (response.statusCode != 200) {
+      throw Exception('Gagal memperbarui judul di server');
+    }
+  }
+
   static Future<bool> hasNewData() async {
     // Backend BLE endpoint is not implemented yet.
     return true;

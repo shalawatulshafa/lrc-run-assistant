@@ -28,7 +28,7 @@ class HistoryScreenState extends State<HistoryScreen> {
   }
 
   void refreshData() {
-    _loadHistoryData();
+    _loadHistoryData(fromServer: false);
   }
 
   void resetData() {
@@ -38,19 +38,28 @@ class HistoryScreenState extends State<HistoryScreen> {
     });
   }
 
-  Future<void> _loadHistoryData() async {
-    setState(() => _isLoading = false);
+  Future<void> _loadHistoryData({bool fromServer = true}) async {
+    if (fromServer) {
+      setState(() => _isLoading = true);
+    }
 
     try {
-      final List<RunSession> loadedData = await RunHistoryStorage.getRuns();
+      final List<RunSession> loadedData = fromServer 
+          ? await RunHistoryStorage.getRuns() 
+          : await RunHistoryStorage.getLocalRuns();
+          
       loadedData.sort((a, b) => b.date.compareTo(a.date));
 
-      setState(() {
-        _historyData = loadedData;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _historyData = loadedData;
+          _isLoading = false;
+        });
+      }
     } catch (_) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -129,7 +138,7 @@ class HistoryScreenState extends State<HistoryScreen> {
                     ),
                     Expanded(
                       child: RefreshIndicator(
-                        onRefresh: _loadHistoryData,
+                        onRefresh: () => _loadHistoryData(fromServer: true),
                         child: ListView.builder(
                           padding: const EdgeInsets.all(20),
                           itemCount: _historyData.length,
@@ -191,11 +200,16 @@ class HistoryScreenState extends State<HistoryScreen> {
 
   Widget _buildHistoryCard(BuildContext context, RunSession data) {
     return GestureDetector(
-      onTap: () async { // 🔥 1. Tambahkan async di sini
-        await Navigator.push( // 🔥 2. Tambahkan await di sini
+      onTap: () async { 
+        await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => DetailLariScreen(runSession: data),
+            builder: (context) => DetailLariScreen(
+              runSession: data,
+              onDataUpdated: () {
+                refreshData(); 
+              },
+            ),
           ),
         );
         

@@ -2,6 +2,7 @@
 
 import '../models/run_session.dart';
 import 'api_service.dart';
+import 'dart:convert';
 
 class RunHistoryStorage {
   static const String _runHistoryKey = 'runHistory';
@@ -12,7 +13,8 @@ class RunHistoryStorage {
     return prefs.getString(_tokenKey);
   }
 
-  static Future<List<RunSession>> _getCachedRuns() async {
+  // 🔥 1. UBAH MENJADI PUBLIC: getLocalRuns agar bisa dipanggil instan tanpa API
+  static Future<List<RunSession>> getLocalRuns() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final List<String> raw = prefs.getStringList(_runHistoryKey) ?? [];
     return RunSession.decodeStringList(raw);
@@ -26,7 +28,7 @@ class RunHistoryStorage {
   static Future<List<RunSession>> getRuns() async {
     final String? token = await _getToken();
     if (token == null || token.isEmpty) {
-      return _getCachedRuns();
+      return getLocalRuns();
     }
 
     try {
@@ -38,14 +40,14 @@ class RunHistoryStorage {
       await saveRuns(runs);
       return runs;
     } catch (_) {
-      return _getCachedRuns();
+      return getLocalRuns();
     }
   }
 
   static Future<RunSession?> addRun(RunSession run) async {
     final String? token = await _getToken();
     if (token == null || token.isEmpty) {
-      final List<RunSession> existing = await _getCachedRuns();
+      final List<RunSession> existing = await getLocalRuns();
       existing.add(run);
       await saveRuns(existing);
       return run;
@@ -69,15 +71,26 @@ class RunHistoryStorage {
       final Map<String, dynamic> detail = await ApiService.getRunDetail(token, runId);
       final RunSession created = RunSession.fromJson(detail);
 
-      final List<RunSession> existing = await _getCachedRuns();
+      final List<RunSession> existing = await getLocalRuns();
       final List<RunSession> updated = existing.where((item) => item.id != created.id).toList()..add(created);
       await saveRuns(updated);
       return created;
     } catch (_) {
-      final List<RunSession> existing = await _getCachedRuns();
+      final List<RunSession> existing = await getLocalRuns();
       existing.add(run);
       await saveRuns(existing);
       return run;
+    }
+  }
+
+  static Future<void> updateRun(RunSession updatedRun) async {
+    // 🔥 Menggunakan getLocalRuns() agar data lokal tidak ditimpa server saat diedit
+    List<RunSession> currentRuns = await getLocalRuns();
+    
+    int index = currentRuns.indexWhere((run) => run.id == updatedRun.id);
+    if (index != -1) {
+      currentRuns[index] = updatedRun;
+      await saveRuns(currentRuns);
     }
   }
 
@@ -88,11 +101,10 @@ class RunHistoryStorage {
         final Map<String, dynamic> detail = await ApiService.getRunDetail(token, id);
         return RunSession.fromJson(detail);
       } catch (_) {
-        // fallback to cache
       }
     }
 
-    final List<RunSession> runs = await _getCachedRuns();
+    final List<RunSession> runs = await getLocalRuns();
     for (final RunSession run in runs) {
       if (run.id == id) return run;
     }
@@ -100,7 +112,8 @@ class RunHistoryStorage {
   }
 
   static Future<void> updateRunTitle(String id, String newTitle) async {
-    final List<RunSession> runs = await _getCachedRuns();
+    // 🔥 Menggunakan getLocalRuns()
+    final List<RunSession> runs = await getLocalRuns();
     final List<RunSession> updated = runs
         .map((run) => run.id == id ? run.copyWith(title: newTitle) : run)
         .toList();
