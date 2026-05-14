@@ -37,49 +37,27 @@ class RunHistoryStorage {
           .whereType<Map<String, dynamic>>()
           .map(RunSession.fromJson)
           .toList();
+      
+      // Simpan backup lokal setelah berhasil fetch dari server
       await saveRuns(runs);
       return runs;
     } catch (_) {
+      // Jika gagal/offline, kembalikan data lokal
       return getLocalRuns();
     }
   }
 
+  // 🔥 PERBAIKAN: addRun sekarang difokuskan untuk penyimpanan lokal.
+  // (Sinkronisasi API dari ESP32 ditangani oleh RunSyncService -> ApiService.syncRun)
   static Future<RunSession?> addRun(RunSession run) async {
-    final String? token = await _getToken();
-    if (token == null || token.isEmpty) {
-      final List<RunSession> existing = await getLocalRuns();
-      existing.add(run);
-      await saveRuns(existing);
-      return run;
-    }
-
     try {
-      final Map<String, dynamic> syncResult = await ApiService.syncRunData(token, {
-        'dateTime': run.date.toIso8601String(),
-        'distance': run.distance,
-        'avgSpm': run.avgSpm,
-        'compliance': run.compliance,
-        'duration': run.durationSeconds,
-      });
-
-      final String? runId = syncResult['runId']?.toString();
-      if (runId == null || runId.isEmpty) {
-        await getRuns();
-        return null;
-      }
-
-      final Map<String, dynamic> detail = await ApiService.getRunDetail(token, runId);
-      final RunSession created = RunSession.fromJson(detail);
-
-      final List<RunSession> existing = await getLocalRuns();
-      final List<RunSession> updated = existing.where((item) => item.id != created.id).toList()..add(created);
-      await saveRuns(updated);
-      return created;
-    } catch (_) {
       final List<RunSession> existing = await getLocalRuns();
       existing.add(run);
       await saveRuns(existing);
       return run;
+    } catch (e) {
+      print('Gagal menyimpan data lari ke lokal: $e');
+      return null;
     }
   }
 
@@ -101,6 +79,7 @@ class RunHistoryStorage {
         final Map<String, dynamic> detail = await ApiService.getRunDetail(token, id);
         return RunSession.fromJson(detail);
       } catch (_) {
+        // Jika gagal API, lanjut cari di lokal
       }
     }
 
@@ -123,5 +102,12 @@ class RunHistoryStorage {
   static Future<void> clear() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.remove(_runHistoryKey);
+  }
+
+  // 🔥 TAMBAHAN: Fungsi untuk menghapus 1 data spesifik di penyimpanan lokal
+  static Future<void> deleteRunLocal(String id) async {
+    final List<RunSession> runs = await getLocalRuns();
+    runs.removeWhere((run) => run.id == id);
+    await saveRuns(runs);
   }
 }

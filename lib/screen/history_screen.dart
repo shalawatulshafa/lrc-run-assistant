@@ -96,7 +96,7 @@ class HistoryScreenState extends State<HistoryScreen> {
         title: const Text('History', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(child: CircularProgressIndicator(color: Color(0xFFF77226)))
           : _historyData.isEmpty
               ? Center(
                   child: Column(
@@ -139,7 +139,9 @@ class HistoryScreenState extends State<HistoryScreen> {
                     Expanded(
                       child: RefreshIndicator(
                         onRefresh: () => _loadHistoryData(fromServer: true),
+                        color: const Color(0xFFF77226),
                         child: ListView.builder(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.all(20),
                           itemCount: _historyData.length,
                           itemBuilder: (context, index) {
@@ -213,7 +215,7 @@ class HistoryScreenState extends State<HistoryScreen> {
           ),
         );
         
-        // 🔥 3. Panggil refreshData() setelah kembali dari layar Detail
+        // Panggil refreshData() setelah kembali dari layar Detail
         refreshData(); 
       },
       child: Container(
@@ -222,9 +224,10 @@ class HistoryScreenState extends State<HistoryScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFFFF1EB)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.05),
+              color: Colors.black.withOpacity(0.03),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -265,8 +268,10 @@ class HistoryScreenState extends State<HistoryScreen> {
                     maxLines: 2,
                   ),
                   const SizedBox(height: 6),
+                  
+                  // 🔥 PERBAIKAN: Mengganti Jarak (km) dengan Pola Target
                   Text(
-                    '${data.distanceLabel} km • ${data.duration}',
+                    'Pola: ${data.targetPattern ?? '-'} • Durasi: ${data.duration}',
                     style: const TextStyle(color: Colors.grey, fontSize: 11),
                   ),
                 ],

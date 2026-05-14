@@ -352,7 +352,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                                 onDataDownloaded: markDataDownloaded,
                                 connectedDevice: widget.connectedDevice!, 
                                 jwtToken: jwtToken,                       
-                                targetPattern: "3:2",                     
+                                targetPattern: "3:2", // Fallback pattern default
                               ),
                             ),
                           );
@@ -504,12 +504,14 @@ class DashboardRunnersState extends State<DashboardRunners> {
                                 ),
                               ),
                               const SizedBox(width: 10),
+                              
+                              // 🔥 PERUBAHAN DI SINI: Jarak -> Target Pola
                               Expanded(
                                 child: _buildStatBox(
-                                  Icons.location_on,
-                                  'Distance',
-                                  _latestRunData!.distanceLabel,
-                                  suffix: 'km',
+                                  Icons.track_changes, // Ikon diganti agar relevan dengan target
+                                  'Target Pola',
+                                  _latestRunData!.targetPattern,
+                                  suffix: '', // Suffix "km" dihilangkan
                                 ),
                               ),
                             ],

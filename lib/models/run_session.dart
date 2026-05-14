@@ -4,19 +4,21 @@ class RunSession {
   final String id;
   final String title;
   final DateTime date;
-  final double distance;
+  final String targetPattern; // 🔥 Menggantikan distance
   final int avgSpm;
   final int compliance;
   final String duration;
+  final List<double> rawLrcData; // 🔥 Ditambahkan untuk grafik di DetailLariScreen
 
   const RunSession({
     required this.id,
     required this.title,
     required this.date,
-    required this.distance,
+    required this.targetPattern,
     required this.avgSpm,
     required this.compliance,
     required this.duration,
+    this.rawLrcData = const [], // Default list kosong agar aman
   });
 
   factory RunSession.fromJson(Map<String, dynamic> json) {
@@ -30,7 +32,6 @@ class RunSession {
       parsedDate = (DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now()).toLocal();
     }
 
-    final dynamic rawDistance = json['distance'];
     final dynamic rawAvgSpm = json['avgSpm'];
     final dynamic rawCompliance = json['compliance'];
     final dynamic rawDuration = json['duration'];
@@ -42,18 +43,25 @@ class RunSession {
       formattedDuration = rawDuration?.toString() ?? '00:00';
     }
 
+    // Parsing data grafik dari backend (array of floats)
+    List<double> parsedRawLrcData = [];
+    if (json['rawLrcData'] != null && json['rawLrcData'] is List) {
+      parsedRawLrcData = (json['rawLrcData'] as List)
+          .map((e) => double.tryParse(e.toString()) ?? 0.0)
+          .toList();
+    }
+
     return RunSession(
       id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
       title: json['title']?.toString() ?? 'Sesi Lari',
       date: parsedDate,
-      distance: rawDistance is num
-          ? rawDistance.toDouble()
-          : double.tryParse(rawDistance?.toString() ?? '') ?? 0,
+      targetPattern: json['targetPattern']?.toString() ?? '-', // Ambil pola target
       avgSpm: rawAvgSpm is num ? rawAvgSpm.toInt() : int.tryParse(rawAvgSpm?.toString() ?? '') ?? 0,
       compliance: rawCompliance is num
           ? rawCompliance.toInt()
           : int.tryParse(rawCompliance?.toString() ?? '') ?? 0,
       duration: formattedDuration,
+      rawLrcData: parsedRawLrcData,
     );
   }
 
@@ -62,10 +70,11 @@ class RunSession {
       'id': id,
       'title': title,
       'date': date.toIso8601String(),
-      'distance': distance,
+      'targetPattern': targetPattern,
       'avgSpm': avgSpm,
       'compliance': compliance,
       'duration': duration,
+      'rawLrcData': rawLrcData,
     };
   }
 
@@ -73,26 +82,25 @@ class RunSession {
     String? id,
     String? title,
     DateTime? date,
-    double? distance,
+    String? targetPattern,
     int? avgSpm,
     int? compliance,
     String? duration,
+    List<double>? rawLrcData,
   }) {
     return RunSession(
       id: id ?? this.id,
       title: title ?? this.title,
       date: date ?? this.date,
-      distance: distance ?? this.distance,
+      targetPattern: targetPattern ?? this.targetPattern,
       avgSpm: avgSpm ?? this.avgSpm,
       compliance: compliance ?? this.compliance,
       duration: duration ?? this.duration,
+      rawLrcData: rawLrcData ?? this.rawLrcData,
     );
   }
 
-  String get distanceLabel {
-    final bool isWholeNumber = distance == distance.truncateToDouble();
-    return isWholeNumber ? distance.toStringAsFixed(0) : distance.toStringAsFixed(1);
-  }
+  // Jarak dan distanceLabel sepenuhnya Dihapus!
 
   int get durationSeconds {
     final String trimmed = duration.trim();

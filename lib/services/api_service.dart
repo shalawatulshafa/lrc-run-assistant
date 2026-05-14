@@ -1,9 +1,8 @@
 ﻿import 'dart:convert';
-
 import 'package:http/http.dart' as http;
 
 class ApiService {
-  // For Android emulator, use: http://10.0.2.2:3000/v1
+  // Pastikan URL ini sudah mengarah ke backend Anda yang terbaru
   static const String baseUrl = 'https://lrc-run-assistant-production.up.railway.app/v1';
 
   static Map<String, String> _headers({String? token}) {
@@ -34,6 +33,8 @@ class ApiService {
     throw _toException(response);
   }
 
+  // --- AUTHENTICATION ---
+
   static Future<Map<String, dynamic>> login(String email, String password) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/login'),
@@ -62,6 +63,8 @@ class ApiService {
     }
   }
 
+  // --- USER PROFILE ---
+
   static Future<Map<String, dynamic>> getProfile(String token) async {
     final response = await http.get(
       Uri.parse('$baseUrl/user/profile'),
@@ -79,6 +82,8 @@ class ApiService {
     return _parseData(response);
   }
 
+  // --- RUN HISTORY & SYNC ---
+
   static Future<List<dynamic>> getRunHistory(String token) async {
     final response = await http.get(
       Uri.parse('$baseUrl/runs'),
@@ -94,17 +99,27 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getRunDetail(String token, String runId) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/run/$runId'),
+      Uri.parse('$baseUrl/runs/$runId'), // Pastikan ini sesuai dengan route GET /runs/:id di Express Anda
       headers: _headers(token: token),
     );
     return _parseData(response);
   }
 
-  static Future<Map<String, dynamic>> syncRunData(String token, Map<String, dynamic> runData) async {
+  // 🔥 PERBAIKAN: Fungsi Sync disesuaikan agar menerima named parameters untuk rawData dan targetPattern
+  static Future<Map<String, dynamic>> syncRun({
+    required String jwtToken,
+    required String dateTime,
+    required String targetPattern,
+    required String rawData,
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/runs/sync'),
-      headers: _headers(token: token),
-      body: jsonEncode(runData),
+      headers: _headers(token: jwtToken),
+      body: jsonEncode({
+        'dateTime': dateTime,
+        'targetPattern': targetPattern,
+        'rawData': rawData, // Mengirim string CSV utuh
+      }),
     );
     return _parseData(response);
   }
@@ -121,7 +136,7 @@ class ApiService {
 
   static Future<void> deleteAllRunData(String token) async {
     final response = await http.delete(
-      Uri.parse('$baseUrl/runs'), // Mengarah ke route '/' yang baru kita buat
+      Uri.parse('$baseUrl/runs'), 
       headers: _headers(token: token),
     );
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -130,7 +145,7 @@ class ApiService {
   }
 
   static Future<void> updateRunTitle(String token, String runId, String newTitle) async {
-    final response = await http.patch( // atau http.put sesuai API Anda
+    final response = await http.patch( 
       Uri.parse('$baseUrl/runs/$runId'),
       headers: {
         'Content-Type': 'application/json',
@@ -139,23 +154,22 @@ class ApiService {
       body: jsonEncode({'title': newTitle}),
     );
 
-    if (response.statusCode != 200) {
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Gagal memperbarui judul di server');
     }
   }
 
+  // --- MOCK ENDPOINTS UNTUK BLE (Bisa diabaikan jika tidak dipakai) ---
+
   static Future<bool> hasNewData() async {
-    // Backend BLE endpoint is not implemented yet.
     return true;
   }
 
   static Future<Map<String, dynamic>> getChestStrapStatus() async {
-    // Backend BLE endpoint is not implemented yet.
     return {'connected': true, 'batteryLevel': 85, 'mode': 'SYNC'};
   }
 
   static Future<List<Map<String, dynamic>>> downloadRunData() async {
-    // Backend BLE endpoint is not implemented yet.
     return <Map<String, dynamic>>[];
   }
 }

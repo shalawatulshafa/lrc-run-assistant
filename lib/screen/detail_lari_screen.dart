@@ -161,7 +161,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     );
   }
 
-  // 🔥 PERBAIKAN LOGIKA: Hanya fungsi ini yang saya ubah (ditambah update API)
   Future<void> _updateTitleInStorage(String newTitle) async {
     final String? id = widget.runId ?? _runSession?.id;
     if (id == null) return;
@@ -182,7 +181,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
       print("Error mengakses token: $e");
     }
 
-    // --- 2. UPDATE LOKAL (sesuai fungsi original Anda) ---
+    // --- 2. UPDATE LOKAL ---
     await RunHistoryStorage.updateRunTitle(id, newTitle);
     
     if (!mounted) return;
@@ -292,7 +291,8 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const SizedBox(height: 30),
             Row(
               children: [
-                _buildSummaryCard('LRC Rata-Rata', '3:2', const Color(0xFFFFF1EB)),
+                // 🔥 PERBAIKAN: Mengganti hardcode '3:2' dengan targetPattern dinamis
+                _buildSummaryCard('Target Pola', session?.targetPattern ?? '-', const Color(0xFFFFF1EB)),
                 const SizedBox(width: 15),
                 _buildSummaryCard('Kepatuhan', '$kepatuhanValue%', const Color(0xFFFFF1EB), valueColor: _getKepatuhanColor(kepatuhanValue)),
               ],
@@ -300,7 +300,10 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const SizedBox(height: 30),
             const Text('Detail Aktivitas', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFF77226), fontSize: 16)),
             const Divider(color: Color(0xFFF77226), thickness: 1.5),
-            _buildDetailRow(Icons.location_on_outlined, 'Jarak', '${session?.distanceLabel ?? '0'} Km'),
+            
+            // 🔥 PERBAIKAN: Mengganti Jarak (km) menjadi Target Pola
+            _buildDetailRow(Icons.track_changes, 'Target Pola', session?.targetPattern ?? '-'),
+            
             _buildDetailRow(Icons.access_time, 'Durasi', session?.duration ?? '00:00'),
             _buildDetailRow(Icons.timeline, 'SPM Rata-Rata', '${session?.avgSpm ?? 0}'),
             _buildDetailRow(Icons.percent_outlined, 'Tingkat Kepatuhan', '$kepatuhanValue%', isLast: true, customValueColor: _getKepatuhanColor(kepatuhanValue)),

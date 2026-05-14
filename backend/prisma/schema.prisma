@@ -29,11 +29,11 @@ model Run {
   userId         String
   user           User     @relation(fields: [userId], references: [id])
   title          String
+  targetPattern  String 
   date           DateTime @default(now())
-  duration       Int      // Dalam detik
+  duration       String      // Dalam detik
   avgSpm         Int
   compliance     Int
-  distance       Float
   
   rawLrcData     Json
 }

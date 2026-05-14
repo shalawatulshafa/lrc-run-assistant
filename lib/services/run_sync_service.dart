@@ -1,7 +1,6 @@
 import 'dart:convert';
-import 'dart:async'; // 🔥 Tambahan untuk Completer
+import 'dart:async';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:http/http.dart' as http;
 import 'api_service.dart';
 
 class RunSyncService {
@@ -10,27 +9,27 @@ class RunSyncService {
 
   StringBuffer _dataBuffer = StringBuffer();
 
-  // 🔥 Sekarang mengembalikan Future<Map<String, dynamic>>
-  Future<Map<String, dynamic>> startSync(BluetoothDevice device, String targetPattern, String jwtToken) async {
-    // Completer digunakan untuk "menahan" fungsi ini sampai proses Stream BLE dan HTTP selesai
+  /// Menjalankan proses sinkronisasi dari awal (Koneksi -> Ambil Data -> Upload)
+  Future<Map<String, dynamic>> startSync(
+      BluetoothDevice device, String fallbackPattern, String jwtToken) async {
     Completer<Map<String, dynamic>> completer = Completer();
 
     try {
       print("Menghubungkan ke ESP32...");
-      
-      // 🔥 Jaring Pengaman: Memastikan ulang koneksi sebelum mencari service
       await device.connect(timeout: const Duration(seconds: 5));
+      
+      // Jeda singkat agar koneksi stabil sebelum mencari service
       await Future.delayed(const Duration(milliseconds: 500));
       
       print("Mencari Service LRC...");
       List<BluetoothService> services = await device.discoverServices();
       BluetoothCharacteristic? targetChar;
 
-      for (var service in services) {
-        if (service.uuid.toString() == serviceUuid) {
-          for (var char in service.characteristics) {
-            if (char.uuid.toString() == characteristicUuid) {
-              targetChar = char;
+      for (var s in services) {
+        if (s.uuid.toString().toLowerCase() == serviceUuid.toLowerCase()) {
+          for (var c in s.characteristics) {
+            if (c.uuid.toString().toLowerCase() == characteristicUuid.toLowerCase()) {
+              targetChar = c;
               break;
             }
           }
@@ -38,77 +37,86 @@ class RunSyncService {
       }
 
       if (targetChar == null) {
-        throw Exception("Karakteristik tidak ditemukan!");
+        throw Exception("Karakteristik sensor tidak ditemukan.");
       }
 
-      // 1. Mulai mendengarkan (Subscribe)
+      _dataBuffer.clear();
+      print("Mengaktifkan Notifikasi...");
       await targetChar.setNotifyValue(true);
-      targetChar.onValueReceived.listen((value) async {
-        String chunk = utf8.decode(value);
-        
-        if (chunk == "EOF") {
-          print("Semua data diterima! Memulai proses upload...");
-          targetChar!.setNotifyValue(false); // Berhenti mendengarkan
+
+      // Mendengarkan data yang masuk dari ESP32
+      StreamSubscription? subscription;
+      subscription = targetChar.onValueReceived.listen((value) async {
+        String receivedData = utf8.decode(value);
+        print("Menerima: $receivedData");
+
+        if (receivedData.contains("EOF")) {
+          print("Semua data diterima. Memproses...");
+          await subscription?.cancel();
           
           try {
-            // TUNGGU hasil upload dari backend
-            final responseJson = await _processAndUploadData(targetPattern, jwtToken);
-            completer.complete(responseJson); // 🔥 Lempar hasil JSON ke DownloadDataScreen
+            // Upload ke backend
+            final result = await _processAndUploadData(fallbackPattern, jwtToken);
+            completer.complete(result);
           } catch (e) {
-            completer.completeError(e); // Lempar error jika gagal upload
+            completer.completeError(e);
           }
-          
         } else {
-          // Kumpulkan data ke Buffer
-          _dataBuffer.write(chunk);
+          _dataBuffer.write(receivedData);
         }
       });
 
-      // 2. Picu ESP32 untuk mulai mengirim
-      print("Mengirim perintah SYNC ke ESP32...");
-      
-      // 🔥 withoutResponse harus false agar Flutter menunggu struk tanda terima dari ESP32
+      // Mengirim perintah "SYNC" ke ESP32 untuk mulai mengirim data
+      print("Mengirim perintah SYNC...");
       await targetChar.write(utf8.encode("SYNC"), withoutResponse: false);
 
     } catch (e) {
-      // 🔥 Print error agar jika gagal lagi, penyakit aslinya terlihat di terminal
       print("========= ERROR SINKRONISASI =========");
       print(e.toString());
       print("======================================");
       completer.completeError(e);
     }
 
-    // Fungsi akan menunggu di sini sampai completer.complete() dipanggil di atas
     return completer.future; 
   }
 
-  // 🔥 Mengembalikan JSON Map dari Backend
-  Future<Map<String, dynamic>> _processAndUploadData(String targetPattern, String jwtToken) async {
+  /// Mengolah Buffer CSV dan mengirimnya ke API Backend
+  Future<Map<String, dynamic>> _processAndUploadData(
+      String fallbackPattern, String jwtToken) async {
+    
     String rawCsv = _dataBuffer.toString();
-    _dataBuffer.clear(); // Kosongkan memori
+    _dataBuffer.clear(); // Bersihkan memori
 
-    List<Map<String, dynamic>> sensorDataList = [];
+    if (rawCsv.trim().isEmpty) {
+      throw Exception("Data dari alat kosong.");
+    }
+
+    // Mencoba mendeteksi pattern ID dari data baris pertama
+    // Format ESP32: timestamp,breath,step,spm,patternId;
     List<String> rows = rawCsv.split(";");
+    String finalPatternId = fallbackPattern; 
 
     for (String row in rows) {
       if (row.trim().isEmpty) continue;
       List<String> cols = row.split(",");
-      if (cols.length == 4) {
-        sensorDataList.add({
-          "timestamp": int.parse(cols[0]),
-          "breath": int.parse(cols[1]),
-          "step": int.parse(cols[2]),
-          "spm": int.parse(cols[3]),
-        });
+      if (cols.length >= 5) {
+        // Ambil kolom ke-5 (index 4) sebagai pattern ID resmi dari alat
+        finalPatternId = cols[4].trim(); 
+        break; 
       }
     }
 
-    Map<String, dynamic> payload = {
-      "dateTime": DateTime.now().toUtc().toIso8601String(),
-      "targetPattern": targetPattern,
-      "sensorData": sensorDataList
-    };
+    print("Mendektesi Pola ID: $finalPatternId");
 
-    return await ApiService.syncRunData(jwtToken, payload);
+    // Mengirim ke backend lewat ApiService
+    // Pastikan ApiService.syncRun menerima (jwtToken, dateTime, targetPattern, rawData)
+    final response = await ApiService.syncRun(
+      jwtToken: jwtToken,
+      dateTime: DateTime.now().toIso8601String(),
+      targetPattern: finalPatternId, // Mengirim "0" atau "1"
+      rawData: rawCsv,
+    );
+
+    return response;
   }
 }

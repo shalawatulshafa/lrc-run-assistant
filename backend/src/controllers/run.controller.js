@@ -2,6 +2,14 @@ import prisma from '../lib/prisma.js';
 import { ok, fail } from '../lib/apiResponse.js';
 import { analyzeRunData } from '../services/analyzer.service.js';
 
+const convertPatternId = (id) => {
+  const patterns = {
+    0: "3:2",
+    1: "2:1"
+  };
+  return patterns[id] || "3:2"; 
+};
+
 // GET /runs
 export const getRuns = async (req, res, next) => {
     try {
@@ -45,21 +53,22 @@ export const getRunById = async (req, res, next) => {
 export const syncRun = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { dateTime, targetPattern, sensorData } = req.body; 
-    // sensorData adalah array dari {timestamp, breath, step, spm}
-
-    if (!sensorData || !targetPattern) {
-      return fail(res, 'VALIDATION_ERROR', 'Data sensor dan target pola diperlukan', 400);
+    const { dateTime, targetPattern, rawData } = req.body;
+    
+    if (!rawData || !targetPattern) {
+        return fail(res, 'VALIDATION_ERROR', 'Data sensor dan target pola diperlukan', 400);
     }
 
-    const analysis = analyzeRunData(sensorData, targetPattern);
+    const patternLabel = convertPatternId(parseInt(targetPattern));
+
+    const analysis = analyzeRunData(rawData, patternLabel);
 
     const newRun = await prisma.run.create({
       data: {
         userId,
         date: new Date(dateTime),
-        title: `Lari LRC ${targetPattern}`,
-        distance: 0, 
+        title: `Lari LRC ${patternLabel}`,
+        targetPattern: patternLabel, 
         avgSpm: analysis.avgSpm,
         compliance: analysis.compliance,
         duration: analysis.duration,

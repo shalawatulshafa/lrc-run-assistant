@@ -27,6 +27,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadUserData();
   }
 
+  void _handleLogout() async {
+  final SharedPreferences prefs = await SharedPreferences.getInstance();
+  
+  // 1. Hapus atau set status login menjadi false
+  await prefs.setBool('isLoggedIn', false);
+  await prefs.remove('authToken');
+  await prefs.remove('userName');
+  await prefs.remove('userEmail');
+  // Anda juga bisa menghapus 'runHistory' jika ingin cache lokal bersih saat logout
+
+  if (mounted) {
+    // 2. Arahkan kembali ke halaman Welcome ('/') dan hapus semua history navigasi
+    Navigator.pushNamedAndRemoveUntil(context, '/', (route) => false);
+  }
+}
+
+// Pastikan fungsi ini dipanggil di dalam dialog konfirmasi logout Anda:
+void _showLogoutConfirmDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Konfirmasi Logout'),
+      content: const Text('Apakah Anda yakin ingin keluar?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Batal'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context); // Tutup dialog
+            _handleLogout(); // Jalankan fungsi logout
+          },
+          child: const Text('Logout', style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ),
+  );
+}
+
   Future<void> _loadUserData() async {
     // Tidak perlu setState(_isLoading = true) karena kita mau Silent Refresh
     
@@ -436,49 +476,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               },
               style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               child: const Text('Hapus'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showLogoutConfirmDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Logout'),
-          content: const Text('Apakah Anda yakin ingin keluar?'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final SharedPreferences prefs = await SharedPreferences.getInstance();
-                final String? token = prefs.getString('authToken');
-
-                try {
-                  if (token != null && token.isNotEmpty) {
-                    await ApiService.logout(token);
-                  }
-                } catch (_) {
-                  // Keep logout flow even when backend is unreachable.
-                }
-
-                await prefs.setBool('isLoggedIn', false);
-                await prefs.remove('authToken');
-
-                if (mounted) {
-                  Navigator.pop(context);
-                  SnackbarHelper.showInfo(context, 'Logout berhasil');
-                  Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-              child: const Text('Logout'),
             ),
           ],
         );
