@@ -3,13 +3,12 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
-import '../services/run_sync_service.dart'; // Pastikan file service ini sudah Anda buat
+import '../services/run_sync_service.dart'; 
 import 'detail_lari_screen.dart';
 
 class DownloadDataScreen extends StatefulWidget {
   final VoidCallback? onDataDownloaded;
   
-  // 🔥 INI 3 VARIABEL BARU YANG DIMINTA OLEH ERROR TADI
   final BluetoothDevice connectedDevice;
   final String jwtToken;
   final String targetPattern;
@@ -63,18 +62,29 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
       final String id = (serverResponse['runId'] ?? '').toString();
       final dynamic summary = serverResponse['summary'] ?? {};
 
+      // Konversi graphData dari backend ke List<double>
+      List<double> parsedGraphData = [];
+      if (summary['graphData'] != null && summary['graphData'] is List) {
+        parsedGraphData = (summary['graphData'] as List)
+            .map((e) => (e as num).toDouble())
+            .toList();
+      }
+
+      // 3. Buat Object RunSession Baru (Tanpa Distance)
       final RunSession newSession = RunSession(
         id: id,
-        title: 'Lari LRC ${widget.targetPattern}',
+        title: 'Sesi Lari LRC', // Judul default, bisa diubah user nanti
         date: DateTime.now(),
-        distance: 0.0,
-        // Gunakan 'as num' lalu toInt() untuk menghindari error double vs int sebelumnya
+        // distance: 0.0, // 🔥 BARIS INI DIHAPUS
+        targetPattern: widget.targetPattern, // 🔥 DITAMBAHKAN: Menyimpan pola yang dikirim
+        avgLrc: (summary['avgLrc'] ?? "-").toString(),
         avgSpm: ((summary['avgSpm'] ?? 0) as num).toInt(),
-        compliance: summary['compliance'],
-        duration: (summary['formattedDuration'] ?? summary['duration'] ?? "00:00").toString(),
+        compliance: ((summary['compliance'] ?? 0) as num).toInt(),
+        duration: (summary['duration'] ?? "00:00").toString(),
+        rawLrcData: parsedGraphData, // 🔥 DITAMBAHKAN: Agar grafik langsung muncul di DetailLariScreen
       );
 
-      // 3. Simpan ke SQLite HP
+      // 4. Simpan ke Cache Lokal HP
       final RunSession savedSession = await RunHistoryStorage.addRun(newSession) ?? newSession;
       
       // Beritahu Dashboard bahwa data baru sudah masuk
@@ -82,7 +92,7 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
 
       if (!mounted) return;
 
-      // 4. Tutup layar loading, buka layar hasil lari
+      // 5. Tutup layar loading, buka layar detail lari
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(

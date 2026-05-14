@@ -3,7 +3,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_service.dart';
 import '../utils/snackbar_helper.dart';
-import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

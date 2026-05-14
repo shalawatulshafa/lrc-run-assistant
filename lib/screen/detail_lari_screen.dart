@@ -292,7 +292,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             Row(
               children: [
                 // 🔥 PERBAIKAN: Mengganti hardcode '3:2' dengan targetPattern dinamis
-                _buildSummaryCard('Target Pola', session?.targetPattern ?? '-', const Color(0xFFFFF1EB)),
+                _buildSummaryCard('LRC Rata-Rata', session?.avgLrc ?? '-', const Color(0xFFFFF1EB)),
                 const SizedBox(width: 15),
                 _buildSummaryCard('Kepatuhan', '$kepatuhanValue%', const Color(0xFFFFF1EB), valueColor: _getKepatuhanColor(kepatuhanValue)),
               ],

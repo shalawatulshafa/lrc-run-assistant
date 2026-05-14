@@ -271,7 +271,7 @@ class HistoryScreenState extends State<HistoryScreen> {
                   
                   // 🔥 PERBAIKAN: Mengganti Jarak (km) dengan Pola Target
                   Text(
-                    'Pola: ${data.targetPattern ?? '-'} • Durasi: ${data.duration}',
+                    'LRC: ${data.avgLrc} • Durasi: ${data.duration}',
                     style: const TextStyle(color: Colors.grey, fontSize: 11),
                   ),
                 ],

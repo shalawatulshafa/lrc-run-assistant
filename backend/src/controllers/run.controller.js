@@ -61,24 +61,30 @@ export const syncRun = async (req, res, next) => {
 
     const patternLabel = convertPatternId(parseInt(targetPattern));
 
+    // Lakukan proses analisis (yang sudah menghasilkan avgLrc)
     const analysis = analyzeRunData(rawData, patternLabel);
 
+    // Simpan ke database
     const newRun = await prisma.run.create({
       data: {
         userId,
         date: new Date(dateTime),
         title: `Lari LRC ${patternLabel}`,
         targetPattern: patternLabel, 
+        
         avgSpm: analysis.avgSpm,
         compliance: analysis.compliance,
         duration: analysis.duration,
-        rawLrcData: analysis.graphData 
+        rawLrcData: analysis.graphData,
+        
+        // 🔥 TAMBAHAN BARU: Memastikan nilai avgLrc tersimpan ke database
+        avgLrc: analysis.avgLrc 
       },
     });
 
     return ok(res, { 
         runId: newRun.id, 
-        summary: analysis 
+        summary: analysis // analysis.avgLrc otomatis sudah terkirim ke front-end di sini
     }, 201);
   } catch (error) {
     next(error);

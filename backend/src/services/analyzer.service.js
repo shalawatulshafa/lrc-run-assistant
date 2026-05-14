@@ -27,6 +27,10 @@ export const analyzeRunData = (rawData, targetPattern) => {
     let correctCycles = 0, totalCycles = 0;
     let cycles = []; 
 
+    // 🔥 Variabel baru untuk menghitung rata-rata rasio inhale:exhale aktual
+    let totalInhaleStepsAll = 0; 
+    let totalExhaleStepsAll = 0;
+
     // MAP RITME: Menggunakan 7 level standar untuk grafik
     const patternMap = {
         "1:1": 1, 
@@ -77,6 +81,11 @@ export const analyzeRunData = (rawData, targetPattern) => {
                 // Satu siklus lengkap terdeteksi (Inhale + Exhale)
                 if (inhaleSteps + exhaleSteps >= 2) {
                     totalCycles++;
+                    
+                    // 🔥 Tambahkan langkah ke total untuk dihitung rata-ratanya nanti
+                    totalInhaleStepsAll += inhaleSteps;
+                    totalExhaleStepsAll += exhaleSteps;
+
                     const detectedPattern = `${inhaleSteps}:${exhaleSteps}`;
                     let detectedY = 0;
 
@@ -136,11 +145,16 @@ export const analyzeRunData = (rawData, targetPattern) => {
     const seconds = durationSeconds % 60;
     const formattedDuration = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-    // 5. HASIL AKHIR
+    // 🔥 5. HITUNG RATA-RATA INHALE & EXHALE (1 angka di belakang koma)
+    const avgInhale = totalCycles > 0 ? (totalInhaleStepsAll / totalCycles).toFixed(1) : "0.0";
+    const avgExhale = totalCycles > 0 ? (totalExhaleStepsAll / totalCycles).toFixed(1) : "0.0";
+
+    // 6. HASIL AKHIR
     return {
         duration: formattedDuration, // Mengirim format "MM:SS" sesuai permintaan controller
         avgSpm: validSpmCount > 0 ? Math.round(totalSpm / validSpmCount) : 0,
         compliance: totalCycles > 0 ? Math.round((correctCycles / totalCycles) * 100) : 0,
-        graphData: finalGraphData // Array angka level (misal: [4, 4.2, 3.8, ...])
+        graphData: finalGraphData, // Array angka level (misal: [4, 4.2, 3.8, ...])
+        avgLrc: `${avgInhale} : ${avgExhale}` // 🔥 KEMBALIKAN STRING SEPERTI "3.2 : 1.9"
     };
 };

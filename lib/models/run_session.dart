@@ -5,6 +5,7 @@ class RunSession {
   final String title;
   final DateTime date;
   final String targetPattern; // 🔥 Menggantikan distance
+  final String avgLrc;
   final int avgSpm;
   final int compliance;
   final String duration;
@@ -15,6 +16,7 @@ class RunSession {
     required this.title,
     required this.date,
     required this.targetPattern,
+    required this.avgLrc,
     required this.avgSpm,
     required this.compliance,
     required this.duration,
@@ -56,6 +58,7 @@ class RunSession {
       title: json['title']?.toString() ?? 'Sesi Lari',
       date: parsedDate,
       targetPattern: json['targetPattern']?.toString() ?? '-', // Ambil pola target
+      avgLrc: json['avgLrc']?.toString() ?? '-',
       avgSpm: rawAvgSpm is num ? rawAvgSpm.toInt() : int.tryParse(rawAvgSpm?.toString() ?? '') ?? 0,
       compliance: rawCompliance is num
           ? rawCompliance.toInt()
@@ -71,6 +74,7 @@ class RunSession {
       'title': title,
       'date': date.toIso8601String(),
       'targetPattern': targetPattern,
+      'avgLrc': avgLrc,
       'avgSpm': avgSpm,
       'compliance': compliance,
       'duration': duration,
@@ -83,6 +87,7 @@ class RunSession {
     String? title,
     DateTime? date,
     String? targetPattern,
+    String? avgLrc,
     int? avgSpm,
     int? compliance,
     String? duration,
@@ -93,6 +98,7 @@ class RunSession {
       title: title ?? this.title,
       date: date ?? this.date,
       targetPattern: targetPattern ?? this.targetPattern,
+      avgLrc: avgLrc ?? this.avgLrc,
       avgSpm: avgSpm ?? this.avgSpm,
       compliance: compliance ?? this.compliance,
       duration: duration ?? this.duration,
