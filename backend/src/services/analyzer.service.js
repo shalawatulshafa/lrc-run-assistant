@@ -1,160 +1,200 @@
 /**
  * analyzer.service.js
- * Fungsi untuk menganalisis data sensor dari ESP32/Mobile
+ * Diperbarui khusus untuk format Snapshot 7 Kolom terbaru dari ESP32
+ * Format: sesi,mulai_lari,waktu_ms,breathPhase,step,spm,patternID
  */
 
-export const analyzeRunData = (rawData, targetPattern) => {
-    // 1. PARSING: Mengubah string CSV dari ESP32 menjadi array objek
-    // Format dari ESP32: timestamp,breathPhase,step,spm,patternID;
-    if (!rawData || typeof rawData !== 'string') return null;
+export const analyzeRunData = (rawData) => {
+    // 1. Validasi Input
+    if (!rawData || typeof rawData !== 'string') return [];
 
-    const rawSamples = rawData.split(';')
-        .filter(row => row.trim() !== '' && row !== 'EOF')
-        .map(row => {
-            const cols = row.split(',');
-            return {
-                timestamp: parseInt(cols[0]),
-                breath: parseInt(cols[1]),    // 1 = Inhale, -1 = Exhale
-                step: parseInt(cols[2]),      // 1 = Ada langkah, 0 = Tidak
-                spm: parseInt(cols[3]),       // Nilai SPM saat itu
-                patternId: parseInt(cols[4])  // ID Pola dari alat (0 atau 1)
+    // Pisahkan baris per baris berdasarkan enter atau titik koma
+    const rawLines = rawData.split(/[\n;]/).filter(row => row.trim() !== '');
+
+    const sessionsMap = {};
+
+    // 2. PARSING CSV (Disempurnakan untuk 7 Kolom)
+    rawLines.forEach(line => {
+        // 🔥 FITUR BARU: Melewati baris header (judul kolom) atau baris EOF
+        if (line.toLowerCase().includes('sesi') || line.includes('EOF')) return;
+
+        // Karena format tanggal adalah "15/05/2026, 17.00.53" (ada koma di dalamnya),
+        // maka saat di-split dengan koma, array akan terpecah menjadi 8 bagian (indeks 0-7)
+        const parts = line.split(',');
+        
+        // Pastikan baris ini memiliki data yang utuh (minimal 8 pecahan)
+        if (parts.length < 8) return;
+
+        const sessionId = parts[0].trim();
+        // Menggabungkan kembali tanggal dan jam, serta membuang tanda kutip (")
+        const rawDate = `${parts[1].replace(/"/g, '').trim()}, ${parts[2].replace(/"/g, '').trim()}`;
+        
+        // 🔥 PERBAIKAN INDEKS (Assign Variabel yang Benar)
+        const timestamp = parseInt(parts[3]);
+        const breathPhase = parseInt(parts[4]); // 1 (Inhale), -1 (Exhale), 0 (Netral)
+        const step = parseInt(parts[5]);        // 1 (Langkah), 0 (Tidak ada)
+        const spm = parseFloat(parts[6]);       // 90.0 (Data desimal)
+        const patternID = parseInt(parts[7]);   // 0 (3:2), 1 (2:1), dst.
+
+        // Inisialisasi sesi jika belum ada di Map
+        if (!sessionsMap[sessionId]) {
+            sessionsMap[sessionId] = {
+                startDate: rawDate,
+                targetPatternId: patternID, // Ambil target pola dari baris pertama sesi ini
+                spmSum: 0,
+                spmCount: 0,
+                startTime: timestamp,
+                endTime: timestamp,
+                
+                // Variabel untuk menghitung Napas & Langkah (LRC)
+                currentPhase: null, // 'IN' atau 'EX'
+                currentInhaleSteps: 0,
+                currentExhaleSteps: 0,
+                cycles: [],
+                totalInhaleStepsAll: 0,
+                totalExhaleStepsAll: 0,
+                totalCycles: 0
             };
-        });
-
-    if (rawSamples.length === 0) return null;
-
-    let totalSpm = 0, validSpmCount = 0;
-    let correctCycles = 0, totalCycles = 0;
-    let cycles = []; 
-
-    // 🔥 Variabel baru untuk menghitung rata-rata rasio inhale:exhale aktual
-    let totalInhaleStepsAll = 0; 
-    let totalExhaleStepsAll = 0;
-
-    // MAP RITME: Menggunakan 7 level standar untuk grafik
-    const patternMap = {
-        "1:1": 1, 
-        "2:1": 2, 
-        "2:2": 3, 
-        "3:2": 4, 
-        "3:3": 5, 
-        "4:3": 6, 
-        "4:4": 7
-    };
-    
-    // Level target berdasarkan label ("3:2" -> level 4)
-    const targetY = patternMap[targetPattern] || 4; 
-
-    // 2. DEBOUNCE FILTER: Menghilangkan noise/lonjakan sesaat pada sensor napas
-    let smoothedSamples = JSON.parse(JSON.stringify(rawSamples)); 
-    for (let i = 1; i < smoothedSamples.length - 1; i++) {
-        if (smoothedSamples[i].breath !== smoothedSamples[i-1].breath &&
-            smoothedSamples[i].breath !== smoothedSamples[i+1].breath) {
-            // Jika fase napas berubah hanya dalam 1 sample, anggap noise dan timpa
-            smoothedSamples[i].breath = smoothedSamples[i-1].breath;
-        }
-    }
-
-    let currentPhase = smoothedSamples[0].breath;
-    let stepsInCurrentPhase = 0;
-    let inhaleSteps = 0, exhaleSteps = 0;
-
-    smoothedSamples.forEach((sample, index) => {
-        // Akumulasi SPM untuk rata-rata
-        if (sample.spm > 0) {
-            totalSpm += sample.spm;
-            validSpmCount++;
         }
 
-        // Hitung langkah dalam fase saat ini
-        if (sample.step === 1) {
-            stepsInCurrentPhase++;
+        const session = sessionsMap[sessionId];
+        
+        // Update waktu akhir setiap kali ada baris baru
+        session.endTime = Math.max(session.endTime, timestamp);
+
+        // Kumpulkan rata-rata SPM
+        if (!isNaN(spm) && spm > 0) {
+            session.spmSum += spm;
+            session.spmCount++;
         }
 
-        // Deteksi perubahan fase (Inhale -> Exhale atau sebaliknya)
-        if (sample.breath !== currentPhase || index === smoothedSamples.length - 1) {
-            if (currentPhase === 1) {
-                inhaleSteps = stepsInCurrentPhase;
-            } else {
-                exhaleSteps = stepsInCurrentPhase;
-
-                // Satu siklus lengkap terdeteksi (Inhale + Exhale)
-                if (inhaleSteps + exhaleSteps >= 2) {
-                    totalCycles++;
-                    
-                    // 🔥 Tambahkan langkah ke total untuk dihitung rata-ratanya nanti
-                    totalInhaleStepsAll += inhaleSteps;
-                    totalExhaleStepsAll += exhaleSteps;
-
-                    const detectedPattern = `${inhaleSteps}:${exhaleSteps}`;
-                    let detectedY = 0;
-
-                    const totalStepsInCycle = inhaleSteps + exhaleSteps;
-
-                    // Mapping pola yang terdeteksi ke level 1-7
-                    if (patternMap[detectedPattern]) {
-                        detectedY = patternMap[detectedPattern];
-                    } else {
-                        // Pendekatan rasio jika pola tidak standar (pembulatan)
-                        if (totalStepsInCycle >= 8) detectedY = 7;      // 4:4
-                        else if (totalStepsInCycle === 7) detectedY = 6;// 4:3
-                        else if (totalStepsInCycle === 6) detectedY = 5;// 3:3
-                        else if (totalStepsInCycle === 5) detectedY = 4;// 3:2
-                        else if (totalStepsInCycle === 4) detectedY = 3;// 2:2
-                        else if (totalStepsInCycle === 3) detectedY = 2;// 2:1
-                        else detectedY = 1;                             // 1:1
-                    }
-
-                    // Cek kepatuhan terhadap target
-                    if (detectedY === targetY) { 
-                        correctCycles++; 
-                    }
-
-                    // Simpan data siklus untuk grafik
-                    cycles.push({
-                        y: detectedY,
-                        label: detectedPattern
+        // --- 3. LOGIKA LRC SNAPSHOT (Fase Napas + Langkah sekaligus) ---
+        
+        // A. Cek perubahan fase napas terlebih dahulu
+        if (breathPhase === 1) { // Mulai Tarik Napas (INHALE)
+            if (session.currentPhase === 'EX') {
+                // Berarti 1 siklus napas (Tarik -> Hembus) telah selesai. Simpan datanya!
+                if (session.currentInhaleSteps > 0 || session.currentExhaleSteps > 0) {
+                    session.cycles.push({
+                        in: session.currentInhaleSteps,
+                        ex: session.currentExhaleSteps
                     });
+                    session.totalInhaleStepsAll += session.currentInhaleSteps;
+                    session.totalExhaleStepsAll += session.currentExhaleSteps;
+                    session.totalCycles++;
                 }
+                // Reset hitungan langkah untuk siklus yang baru
+                session.currentInhaleSteps = 0;
+                session.currentExhaleSteps = 0;
             }
-            // Reset untuk fase berikutnya
-            currentPhase = sample.breath;
-            stepsInCurrentPhase = 0;
+            session.currentPhase = 'IN';
+        } 
+        else if (breathPhase === -1) { // Mulai Hembus Napas (EXHALE)
+            session.currentPhase = 'EX';
+        }
+        // (Jika breathPhase === 0, berarti masih netral, tetap di currentPhase sebelumnya)
+
+        // B. Cek apakah ada langkah kaki di baris/waktu ini
+        if (step === 1) {
+            if (session.currentPhase === 'IN') {
+                session.currentInhaleSteps++;
+            } else if (session.currentPhase === 'EX') {
+                session.currentExhaleSteps++;
+            }
         }
     });
 
-    // 3. SMOOTHING GRAFIK: Menggunakan Moving Average agar garis tidak patah-patah
-    let finalGraphData = [];
-    for (let i = 0; i < cycles.length; i++) {
-        let sumY = 0;
-        let count = 0;
-        for (let j = Math.max(0, i - 1); j <= Math.min(cycles.length - 1, i + 1); j++) {
-            sumY += cycles[j].y;
-            count++;
+    // 4. MENGHITUNG KESIMPULAN PER SESI
+    const convertPatternId = (id) => {
+        const map = { 0: "3:2", 1: "2:1", 2: "2:2", 3: "3:3", 4: "4:4", 5: "4:3", 6: "1:1" };
+        return map[id] || "3:2";
+    };
+
+    const mapPatternToY = (patternStr) => {
+        const mapping = { "4:4": 7, "4:3": 6, "3:3": 5, "3:2": 4, "2:2": 3, "2:1": 2, "1:1": 1 };
+        return mapping[patternStr] || 4;
+    };
+
+    const detectActualPattern = (inSteps, exSteps) => {
+        const ratio = inSteps / (exSteps || 1);
+        if (ratio >= 1.8) return "2:1";
+        if (ratio >= 1.3) return "3:2";
+        if (inSteps === exSteps) {
+            if (inSteps >= 4) return "4:4";
+            if (inSteps === 3) return "3:3";
+            if (inSteps === 2) return "2:2";
+            return "1:1";
         }
-        // Kita hanya mengambil nilai Y (level 1-7) untuk dikirim ke Flutter Painter
-        finalGraphData.push(parseFloat((sumY / count).toFixed(2)));
+        return `${inSteps}:${exSteps}`;
+    };
+
+    const analyzedSessions = [];
+
+    // Loop semua sesi yang sudah dikelompokkan
+    for (const [sessionId, session] of Object.entries(sessionsMap)) {
+        const targetPattern = convertPatternId(session.targetPatternId);
+        
+        // Hitung Durasi (ms ke menit:detik)
+        const durationMs = session.endTime - session.startTime;
+        const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
+        const minutes = Math.floor(durationSeconds / 60);
+        const seconds = durationSeconds % 60;
+        const formattedDuration = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+        // Evaluasi Kepatuhan & Persiapkan Data Grafik
+        let matchCount = 0;
+        let graphDataPoints = [];
+
+        session.cycles.forEach(cycle => {
+            const actualPattern = detectActualPattern(cycle.in, cycle.ex);
+            
+            // Cek kepatuhan (Apakah pola aslinya sama dengan target alat?)
+            if (actualPattern === targetPattern || 
+               (targetPattern === "3:2" && cycle.in === 3 && cycle.ex === 2) ||
+               (targetPattern === "2:1" && cycle.in === 2 && cycle.ex === 1)) {
+                matchCount++;
+            }
+
+            graphDataPoints.push({
+                y: mapPatternToY(actualPattern),
+                in: cycle.in,
+                ex: cycle.ex
+            });
+        });
+
+        // Hitung Kepatuhan (%)
+        const compliance = session.totalCycles > 0 
+            ? Math.round((matchCount / session.totalCycles) * 100) 
+            : 0;
+
+        // Smoothing Grafik (Agar garis di aplikasi Flutter tidak terlalu tajam/naik-turun drastis)
+        let finalGraphData = [];
+        for (let i = 0; i < graphDataPoints.length; i++) {
+            let sumY = 0;
+            let count = 0;
+            for (let j = Math.max(0, i - 1); j <= Math.min(graphDataPoints.length - 1, i + 1); j++) {
+                sumY += graphDataPoints[j].y;
+                count++;
+            }
+            finalGraphData.push(parseFloat((sumY / count).toFixed(2)));
+        }
+
+        // Rata-Rata Rasio LRC Aktual (Napas : Langkah)
+        const avgInhale = session.totalCycles > 0 ? (session.totalInhaleStepsAll / session.totalCycles).toFixed(1) : "0.0";
+        const avgExhale = session.totalCycles > 0 ? (session.totalExhaleStepsAll / session.totalCycles).toFixed(1) : "0.0";
+
+        // Masukkan hasil akhir untuk dikirim ke Flutter
+        analyzedSessions.push({
+            sessionNumber: parseInt(sessionId),
+            startDate: session.startDate, 
+            targetPattern: targetPattern,
+            duration: formattedDuration,
+            avgSpm: session.spmCount > 0 ? Math.round(session.spmSum / session.spmCount) : 0,
+            compliance: compliance,
+            avgLrc: `${avgInhale} : ${avgExhale}`,
+            rawLrcData: finalGraphData
+        });
     }
 
-    // 4. KALKULASI DURASI
-    const firstTs = smoothedSamples[0].timestamp;
-    const lastTs = smoothedSamples[smoothedSamples.length - 1].timestamp;
-    const durationSeconds = Math.floor((lastTs - firstTs) / 1000000);
-
-    const minutes = Math.floor(durationSeconds / 60);
-    const seconds = durationSeconds % 60;
-    const formattedDuration = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-
-    // 🔥 5. HITUNG RATA-RATA INHALE & EXHALE (1 angka di belakang koma)
-    const avgInhale = totalCycles > 0 ? (totalInhaleStepsAll / totalCycles).toFixed(1) : "0.0";
-    const avgExhale = totalCycles > 0 ? (totalExhaleStepsAll / totalCycles).toFixed(1) : "0.0";
-
-    // 6. HASIL AKHIR
-    return {
-        duration: formattedDuration, // Mengirim format "MM:SS" sesuai permintaan controller
-        avgSpm: validSpmCount > 0 ? Math.round(totalSpm / validSpmCount) : 0,
-        compliance: totalCycles > 0 ? Math.round((correctCycles / totalCycles) * 100) : 0,
-        graphData: finalGraphData, // Array angka level (misal: [4, 4.2, 3.8, ...])
-        avgLrc: `${avgInhale} : ${avgExhale}` // 🔥 KEMBALIKAN STRING SEPERTI "3.2 : 1.9"
-    };
+    return analyzedSessions;
 };

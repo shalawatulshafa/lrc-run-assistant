@@ -116,7 +116,7 @@ class HistoryScreenState extends State<HistoryScreen> {
                       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                       child: Row(
                         children: [
-                          _buildTopStatCard(Icons.access_time, 'Sinkronisasi', _getLastSyncDate()),
+                          _buildTopStatCard(Icons.access_time, 'Aktivitas Terakhir', _getLastSyncDate()),
                           const SizedBox(width: 15),
                           _buildTopStatCard(Icons.list_alt, 'Total Sesi', '${_historyData.length} Aktivitas'),
                         ],
@@ -269,14 +269,17 @@ class HistoryScreenState extends State<HistoryScreen> {
                   ),
                   const SizedBox(height: 6),
                   
-                  // 🔥 PERBAIKAN: Mengganti Jarak (km) dengan Pola Target
+                  // 🔥 Teks disempurnakan: Menampilkan Target Pola, Aktual, dan Durasi dengan rapi
                   Text(
-                    'LRC: ${data.avgLrc} • Durasi: ${data.duration}',
+                    'Target: ${data.targetPattern} • LRC: ${data.avgLrc} • ${data.duration}',
                     style: const TextStyle(color: Colors.grey, fontSize: 11),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ],
               ),
             ),
+            const SizedBox(width: 10), // Memberi jarak agar teks tidak menabrak angka persentase
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [

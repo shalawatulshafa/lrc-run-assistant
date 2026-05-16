@@ -4,40 +4,47 @@ class RunSession {
   final String id;
   final String title;
   final DateTime date;
-  final String targetPattern; // 🔥 Menggantikan distance
+  final int? sessionNumber; // 🔥 TAMBAHAN BARU: Menyimpan urutan sesi
+  final String targetPattern;
   final String avgLrc;
   final int avgSpm;
   final int compliance;
   final String duration;
-  final List<double> rawLrcData; // 🔥 Ditambahkan untuk grafik di DetailLariScreen
+  final List<double> rawLrcData; 
 
   const RunSession({
     required this.id,
     required this.title,
     required this.date,
+    this.sessionNumber, // 🔥 Opsional tapi penting
     required this.targetPattern,
     required this.avgLrc,
     required this.avgSpm,
     required this.compliance,
     required this.duration,
-    this.rawLrcData = const [], // Default list kosong agar aman
+    this.rawLrcData = const [],
   });
 
   factory RunSession.fromJson(Map<String, dynamic> json) {
     final dynamic rawDate = json['date'] ?? json['dateTime'];
     DateTime parsedDate;
     
-    // 🔥 PERBAIKAN: Menambahkan .toLocal() di sini agar waktu dikonversi ke zona waktu HP (WIB / UTC+7)
+    // Konversi waktu ke zona waktu HP (WIB / UTC+7)
     if (rawDate is DateTime) {
       parsedDate = rawDate.toLocal();
     } else {
       parsedDate = (DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now()).toLocal();
     }
 
-    final dynamic rawAvgSpm = json['avgSpm'];
-    final dynamic rawCompliance = json['compliance'];
-    final dynamic rawDuration = json['duration'];
+    // Parsing data grafik dari backend agar aman menjadi List<double>
+    List<double> parsedGraphData = [];
+    if (json['rawLrcData'] != null && json['rawLrcData'] is List) {
+      parsedGraphData = (json['rawLrcData'] as List)
+          .map((e) => (e as num).toDouble())
+          .toList();
+    }
 
+    final dynamic rawDuration = json['duration'];
     String formattedDuration;
     if (rawDuration is num) {
       formattedDuration = _secondsToDuration(rawDuration.toInt());
@@ -45,47 +52,38 @@ class RunSession {
       formattedDuration = rawDuration?.toString() ?? '00:00';
     }
 
-    // Parsing data grafik dari backend (array of floats)
-    List<double> parsedRawLrcData = [];
-    if (json['rawLrcData'] != null && json['rawLrcData'] is List) {
-      parsedRawLrcData = (json['rawLrcData'] as List)
-          .map((e) => double.tryParse(e.toString()) ?? 0.0)
-          .toList();
-    }
-
     return RunSession(
-      id: json['id']?.toString() ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      title: json['title']?.toString() ?? 'Sesi Lari',
+      id: json['id']?.toString() ?? '',
+      title: json['title'] ?? 'Sesi Lari',
       date: parsedDate,
-      targetPattern: json['targetPattern']?.toString() ?? '-', // Ambil pola target
+      sessionNumber: json['sessionNumber'] != null ? (json['sessionNumber'] as num).toInt() : null, // 🔥 Ambil dari JSON
+      targetPattern: json['targetPattern']?.toString() ?? '3:2',
       avgLrc: json['avgLrc']?.toString() ?? '-',
-      avgSpm: rawAvgSpm is num ? rawAvgSpm.toInt() : int.tryParse(rawAvgSpm?.toString() ?? '') ?? 0,
-      compliance: rawCompliance is num
-          ? rawCompliance.toInt()
-          : int.tryParse(rawCompliance?.toString() ?? '') ?? 0,
+      avgSpm: (json['avgSpm'] ?? 0).toInt(),
+      compliance: (json['compliance'] ?? 0).toInt(),
       duration: formattedDuration,
-      rawLrcData: parsedRawLrcData,
+      rawLrcData: parsedGraphData, 
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      'id': id,
-      'title': title,
-      'date': date.toIso8601String(),
-      'targetPattern': targetPattern,
-      'avgLrc': avgLrc,
-      'avgSpm': avgSpm,
-      'compliance': compliance,
-      'duration': duration,
-      'rawLrcData': rawLrcData,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'date': date.toIso8601String(),
+    'sessionNumber': sessionNumber, // 🔥 Pastikan tersimpan ke memori lokal
+    'targetPattern': targetPattern,
+    'avgLrc': avgLrc,
+    'avgSpm': avgSpm,
+    'compliance': compliance,
+    'duration': duration,
+    'rawLrcData': rawLrcData, // 🔥 Simpan grafik ke memori lokal
+  };
 
   RunSession copyWith({
     String? id,
     String? title,
     DateTime? date,
+    int? sessionNumber,
     String? targetPattern,
     String? avgLrc,
     int? avgSpm,
@@ -97,6 +95,7 @@ class RunSession {
       id: id ?? this.id,
       title: title ?? this.title,
       date: date ?? this.date,
+      sessionNumber: sessionNumber ?? this.sessionNumber,
       targetPattern: targetPattern ?? this.targetPattern,
       avgLrc: avgLrc ?? this.avgLrc,
       avgSpm: avgSpm ?? this.avgSpm,
@@ -105,8 +104,6 @@ class RunSession {
       rawLrcData: rawLrcData ?? this.rawLrcData,
     );
   }
-
-  // Jarak dan distanceLabel sepenuhnya Dihapus!
 
   int get durationSeconds {
     final String trimmed = duration.trim();
@@ -140,14 +137,14 @@ class RunSession {
       try {
         final Map<String, dynamic> jsonMap = jsonDecode(item);
         result.add(RunSession.fromJson(jsonMap));
-      } catch (_) {
-        // Skip malformed entries to keep UI resilient.
+      } catch (e) {
+        // Abaikan data yang corrupt
       }
     }
     return result;
   }
 
-  static List<String> encodeStringList(List<RunSession> runs) {
-    return runs.map((run) => jsonEncode(run.toJson())).toList();
+  static List<String> encodeToStringList(List<RunSession> sessions) {
+    return sessions.map((s) => jsonEncode(s.toJson())).toList();
   }
 }

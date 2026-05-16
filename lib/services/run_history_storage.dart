@@ -1,8 +1,8 @@
 ﻿import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 
 import '../models/run_session.dart';
 import 'api_service.dart';
-import 'dart:convert';
 
 class RunHistoryStorage {
   static const String _runHistoryKey = 'runHistory';
@@ -22,7 +22,8 @@ class RunHistoryStorage {
 
   static Future<void> saveRuns(List<RunSession> runs) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    await prefs.setStringList(_runHistoryKey, RunSession.encodeStringList(runs));
+    // 🔥 PERBAIKAN NAMA FUNGSI: Disesuaikan dengan run_session.dart yang baru
+    await prefs.setStringList(_runHistoryKey, RunSession.encodeToStringList(runs));
   }
 
   static Future<List<RunSession>> getRuns() async {
@@ -41,29 +42,28 @@ class RunHistoryStorage {
       // Simpan backup lokal setelah berhasil fetch dari server
       await saveRuns(runs);
       return runs;
-    } catch (_) {
-      // Jika gagal/offline, kembalikan data lokal
+    } catch (e) {
+      // Jika gagal fetch API, kembalikan data lokal
       return getLocalRuns();
     }
   }
 
-  // 🔥 PERBAIKAN: addRun sekarang difokuskan untuk penyimpanan lokal.
-  // (Sinkronisasi API dari ESP32 ditangani oleh RunSyncService -> ApiService.syncRun)
-  static Future<RunSession?> addRun(RunSession run) async {
-    try {
-      final List<RunSession> existing = await getLocalRuns();
-      existing.add(run);
-      await saveRuns(existing);
-      return run;
-    } catch (e) {
-      print('Gagal menyimpan data lari ke lokal: $e');
-      return null;
+  static Future<void> saveRun(RunSession newRun) async {
+    final List<RunSession> currentRuns = await getLocalRuns();
+    
+    // Cek apakah data sudah ada (mencegah duplikat)
+    int index = currentRuns.indexWhere((run) => run.id == newRun.id);
+    if (index != -1) {
+      currentRuns[index] = newRun;
+    } else {
+      currentRuns.insert(0, newRun); // Masukkan di paling atas (terbaru)
     }
+    
+    await saveRuns(currentRuns);
   }
 
   static Future<void> updateRun(RunSession updatedRun) async {
-    // 🔥 Menggunakan getLocalRuns() agar data lokal tidak ditimpa server saat diedit
-    List<RunSession> currentRuns = await getLocalRuns();
+    final List<RunSession> currentRuns = await getLocalRuns();
     
     int index = currentRuns.indexWhere((run) => run.id == updatedRun.id);
     if (index != -1) {
@@ -91,7 +91,6 @@ class RunHistoryStorage {
   }
 
   static Future<void> updateRunTitle(String id, String newTitle) async {
-    // 🔥 Menggunakan getLocalRuns()
     final List<RunSession> runs = await getLocalRuns();
     final List<RunSession> updated = runs
         .map((run) => run.id == id ? run.copyWith(title: newTitle) : run)
@@ -104,8 +103,8 @@ class RunHistoryStorage {
     await prefs.remove(_runHistoryKey);
   }
 
-  // 🔥 TAMBAHAN: Fungsi untuk menghapus 1 data spesifik di penyimpanan lokal
-  static Future<void> deleteRunLocal(String id) async {
+  // Fungsi untuk menghapus 1 data spesifik di penyimpanan lokal
+  static Future<void> deleteRun(String id) async {
     final List<RunSession> runs = await getLocalRuns();
     runs.removeWhere((run) => run.id == id);
     await saveRuns(runs);

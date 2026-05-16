@@ -43,12 +43,14 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
       _runSession = widget.runSession;
       _currentTitle = widget.runSession!.title;
       targetId = widget.runSession!.id;
+      _chartData = _runSession!.rawLrcData; // 🔥 Langsung ambil grafik dari memori lokal
     } else if (widget.runId != null) {
       await _loadDataFromId(widget.runId!);
       targetId = widget.runId;
     }
 
-    if (targetId != null) {
+    // Jika grafik masih kosong (misal data lama), baru kita fetch dari API sebagai cadangan
+    if (targetId != null && _chartData.isEmpty) {
       await _fetchRawDataForChart(targetId);
     }
 
@@ -63,6 +65,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
 
     _runSession = run;
     _currentTitle = run.title;
+    _chartData = run.rawLrcData; // 🔥 Ambil data grafik
   }
 
   Future<void> _fetchRawDataForChart(String id) async {
@@ -291,7 +294,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const SizedBox(height: 30),
             Row(
               children: [
-                // 🔥 PERBAIKAN: Mengganti hardcode '3:2' dengan targetPattern dinamis
                 _buildSummaryCard('LRC Rata-Rata', session?.avgLrc ?? '-', const Color(0xFFFFF1EB)),
                 const SizedBox(width: 15),
                 _buildSummaryCard('Kepatuhan', '$kepatuhanValue%', const Color(0xFFFFF1EB), valueColor: _getKepatuhanColor(kepatuhanValue)),
@@ -301,7 +303,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const Text('Detail Aktivitas', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFF77226), fontSize: 16)),
             const Divider(color: Color(0xFFF77226), thickness: 1.5),
             
-            // 🔥 PERBAIKAN: Mengganti Jarak (km) menjadi Target Pola
             _buildDetailRow(Icons.track_changes, 'Target Pola', session?.targetPattern ?? '-'),
             
             _buildDetailRow(Icons.access_time, 'Durasi', session?.duration ?? '00:00'),

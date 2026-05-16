@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Run" ALTER COLUMN "rawLrcData" DROP NOT NULL;

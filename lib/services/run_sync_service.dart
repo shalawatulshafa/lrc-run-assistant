@@ -9,9 +9,20 @@ class RunSyncService {
 
   StringBuffer _dataBuffer = StringBuffer();
 
+  // 🔥 FITUR BARU: Fungsi untuk memutus koneksi secara manual
+  Future<void> disconnectDevice(BluetoothDevice device) async {
+    try {
+      print("Memutus koneksi dari ${device.platformName}...");
+      await device.disconnect();
+      print("Koneksi berhasil diputus.");
+    } catch (e) {
+      print("Gagal memutus koneksi: $e");
+    }
+  }
+
   /// Menjalankan proses sinkronisasi dari awal (Koneksi -> Ambil Data -> Upload)
   Future<Map<String, dynamic>> startSync(
-      BluetoothDevice device, String fallbackPattern, String jwtToken) async {
+      BluetoothDevice device, String jwtToken) async {
     Completer<Map<String, dynamic>> completer = Completer();
 
     try {
@@ -37,86 +48,65 @@ class RunSyncService {
       }
 
       if (targetChar == null) {
-        throw Exception("Karakteristik sensor tidak ditemukan.");
+        throw Exception("Karakteristik Bluetooth tidak ditemukan pada alat.");
       }
 
-      _dataBuffer.clear();
-      print("Mengaktifkan Notifikasi...");
+      print("Mendaftar untuk Notifikasi BLE...");
       await targetChar.setNotifyValue(true);
 
-      // Mendengarkan data yang masuk dari ESP32
-      StreamSubscription? subscription;
-      subscription = targetChar.onValueReceived.listen((value) async {
-        String receivedData = utf8.decode(value);
-        print("Menerima: $receivedData");
+      targetChar.lastValueStream.listen((value) async {
+        if (value.isNotEmpty) {
+          String chunk = utf8.decode(value);
 
-        if (receivedData.contains("EOF")) {
-          print("Semua data diterima. Memproses...");
-          await subscription?.cancel();
-          
-          try {
-            // Upload ke backend
-            final result = await _processAndUploadData(fallbackPattern, jwtToken);
-            completer.complete(result);
-          } catch (e) {
-            completer.completeError(e);
+          if (chunk.contains("EOF")) {
+            print("Menerima EOF. Sinkronisasi dari alat selesai.");
+            _dataBuffer.write(chunk.replaceAll("EOF", "")); 
+            
+            try {
+              // Mulai proses upload setelah semua data ditarik
+              var result = await _processAndUploadData(jwtToken);
+              completer.complete(result);
+            } catch (e) {
+              completer.completeError(e);
+            }
+          } else {
+            // Sambung terus data yang terpotong-potong
+            _dataBuffer.write(chunk);
           }
-        } else {
-          _dataBuffer.write(receivedData);
         }
       });
 
-      // Mengirim perintah "SYNC" ke ESP32 untuk mulai mengirim data
-      print("Mengirim perintah SYNC...");
+      print("Mengirim perintah SYNC ke ESP32...");
       await targetChar.write(utf8.encode("SYNC"), withoutResponse: false);
 
     } catch (e) {
       print("========= ERROR SINKRONISASI =========");
       print(e.toString());
       print("======================================");
-      completer.completeError(e);
+      if (!completer.isCompleted) {
+        completer.completeError(e);
+      }
     }
 
     return completer.future; 
   }
 
   /// Mengolah Buffer CSV dan mengirimnya ke API Backend
-  Future<Map<String, dynamic>> _processAndUploadData(
-      String fallbackPattern, String jwtToken) async {
+  Future<Map<String, dynamic>> _processAndUploadData(String jwtToken) async {
     
     String rawCsv = _dataBuffer.toString();
-    _dataBuffer.clear(); // Bersihkan memori
+    _dataBuffer.clear(); // Bersihkan memori HP
 
     if (rawCsv.trim().isEmpty) {
       throw Exception("Data dari alat kosong.");
     }
 
-    // Mencoba mendeteksi pattern ID dari data baris pertama
-    // Format ESP32: timestamp,breath,step,spm,patternId;
-    List<String> rows = rawCsv.split(";");
-    String finalPatternId = fallbackPattern; 
+    print("Mengirim data CSV Multi-Sesi ke Backend...");
 
-    for (String row in rows) {
-      if (row.trim().isEmpty) continue;
-      List<String> cols = row.split(",");
-      if (cols.length >= 5) {
-        // Ambil kolom ke-5 (index 4) sebagai pattern ID resmi dari alat
-        finalPatternId = cols[4].trim(); 
-        break; 
-      }
-    }
-
-    print("Mendektesi Pola ID: $finalPatternId");
-
-    // Mengirim ke backend lewat ApiService
-    // Pastikan ApiService.syncRun menerima (jwtToken, dateTime, targetPattern, rawData)
-    final response = await ApiService.syncRun(
+    // Langsung tembak ke backend tanpa perlu memecah atau menebak pola
+    return await ApiService.syncRun(
       jwtToken: jwtToken,
-      dateTime: DateTime.now().toIso8601String(),
-      targetPattern: finalPatternId, // Mengirim "0" atau "1"
       rawData: rawCsv,
     );
-
-    return response;
   }
 }

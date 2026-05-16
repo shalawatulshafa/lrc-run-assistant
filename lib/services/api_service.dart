@@ -99,29 +99,27 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getRunDetail(String token, String runId) async {
     final response = await http.get(
-      Uri.parse('$baseUrl/runs/$runId'), // Pastikan ini sesuai dengan route GET /runs/:id di Express Anda
+      Uri.parse('$baseUrl/runs/$runId'), 
       headers: _headers(token: token),
     );
     return _parseData(response);
   }
 
-  // 🔥 PERBAIKAN: Fungsi Sync disesuaikan agar menerima named parameters untuk rawData dan targetPattern
+  // 🔥 PERBAIKAN: Fungsi Sync disederhanakan. 
+  // Sekarang hanya mengirim rawData, karena dateTime, sesi, dan targetPattern 
+  // sudah ada di dalam string rawData tersebut dan diurus oleh Node.js.
   static Future<Map<String, dynamic>> syncRun({
     required String jwtToken,
-    required String dateTime,
-    required String targetPattern,
     required String rawData,
   }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/runs/sync'),
       headers: _headers(token: jwtToken),
       body: jsonEncode({
-        'dateTime': dateTime,
-        'targetPattern': targetPattern,
-        'rawData': rawData, // Mengirim string CSV utuh
+        'rawData': rawData, // Mengirim seluruh CSV Multi-Sesi dari ESP32
       }),
     );
-    return _parseData(response);
+    return _parseData(response); // Mengembalikan array "runs" dari backend
   }
 
   static Future<void> deleteRunData(String token, String runId) async {
@@ -158,8 +156,6 @@ class ApiService {
       throw Exception('Gagal memperbarui judul di server');
     }
   }
-
-  // --- MOCK ENDPOINTS UNTUK BLE (Bisa diabaikan jika tidak dipakai) ---
 
   static Future<bool> hasNewData() async {
     return true;

@@ -1,4 +1,4 @@
-﻿import 'dart:async'; // 🔥 IMPORT BARU untuk mengatur Stream Baterai
+﻿import 'dart:async'; 
 import 'package:flutter/material.dart';
 
 import '../models/run_session.dart';
@@ -14,6 +14,8 @@ class DashboardRunners extends StatefulWidget {
   final BluetoothDevice? connectedDevice;
   final VoidCallback? onDataSaved;
   final bool hasNewDataFromBle;
+  // 🔥 PERBAIKAN: Menambahkan parameter onConnectionChanged agar tidak error
+  final Function(bool)? onConnectionChanged; 
 
   const DashboardRunners({
     super.key,
@@ -22,6 +24,7 @@ class DashboardRunners extends StatefulWidget {
     this.onDataSaved,
     this.hasNewDataFromBle = false,
     this.connectedDevice,
+    this.onConnectionChanged, // 🔥 Mendaftarkan parameter
   });
 
   @override
@@ -29,13 +32,14 @@ class DashboardRunners extends StatefulWidget {
 }
 
 class DashboardRunnersState extends State<DashboardRunners> {
-  int batteryLevel = 0; // 🔥 Ubah default menjadi 0 (Nanti diupdate otomatis)
+  int batteryLevel = 0; 
   RunSession? _latestRunData;
   bool _isLoadingLatest = false;
   bool _hasNewData = false;
 
-  // 🔥 SUBSCRIPTION BATERAI
   StreamSubscription<List<int>>? _batterySubscription;
+  // 🔥 FITUR BARU: Listener untuk mendeteksi ESP32 yang mati mendadak
+  StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
 
   @override
   void initState() {
@@ -43,9 +47,8 @@ class DashboardRunnersState extends State<DashboardRunners> {
     _loadLatestRunData();
     _hasNewData = widget.hasNewDataFromBle;
     
-    // 🔥 Jika saat pertama kali dibuka alat sudah konek, langsung baca baterai
     if (widget.isConnectedFromMain && widget.connectedDevice != null) {
-      _initBatteryListener();
+      _initDeviceListeners(); // 🔥 Panggil fungsi gabungan
     }
   }
 
@@ -58,43 +61,49 @@ class DashboardRunnersState extends State<DashboardRunners> {
       });
     }
 
-    // 🔥 Jika perangkat baru saja terhubung (transisi dari false ke true)
     if (widget.isConnectedFromMain && !oldWidget.isConnectedFromMain && widget.connectedDevice != null) {
-      _initBatteryListener();
+      _initDeviceListeners(); // 🔥 Panggil fungsi gabungan
     }
     
-    // 🔥 Jika perangkat terputus, matikan listener
     if (!widget.isConnectedFromMain && oldWidget.isConnectedFromMain) {
-      _cancelBatteryListener();
+      _cancelListeners(); // 🔥 Hapus semua listener
       setState(() => batteryLevel = 0);
     }
   }
 
   @override
   void dispose() {
-    _cancelBatteryListener(); // 🔥 Hapus stream memory saat layar ditutup
+    _cancelListeners(); 
     super.dispose();
   }
 
-  // 🔥 FUNGSI UTAMA UNTUK MENDENGARKAN BATERAI
-  Future<void> _initBatteryListener() async {
+  // 🔥 FITUR BARU: Gabungan Listener Koneksi & Baterai
+  Future<void> _initDeviceListeners() async {
     try {
       final device = widget.connectedDevice!;
       
-      // Minta perangkat untuk memberitahu layanan apa saja yang dia punya
-      List<BluetoothService> services = await device.discoverServices();
+      // 1. DENGARKAN STATUS KONEKSI (Jika alat mati, otomatis disconnect)
+      _connectionSubscription?.cancel();
+      _connectionSubscription = device.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected) {
+          if (mounted) {
+            setState(() {
+              batteryLevel = 0;
+            });
+            // Beritahu main_navigation bahwa koneksi terputus!
+            widget.onConnectionChanged?.call(false); 
+          }
+        }
+      });
 
+      // 2. DENGARKAN BATERAI
+      List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
-        // Cari UUID Baterai Standar (180F)
         if (service.uuid.toString().toUpperCase().contains("180F")) {
           for (var characteristic in service.characteristics) {
-            // Cari Karakteristik Level Baterai (2A19)
             if (characteristic.uuid.toString().toUpperCase().contains("2A19")) {
-              
-              // Aktifkan Notifikasi Baterai
               await characteristic.setNotifyValue(true);
 
-              // Dengarkan perubahan persentase (value[0] = 0-100)
               _batterySubscription = characteristic.lastValueStream.listen((value) {
                 if (value.isNotEmpty && mounted) {
                   setState(() {
@@ -103,7 +112,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 }
               });
               
-              // Coba baca secara manual sekali saat pertama kali init
               List<int> initialValue = await characteristic.read();
               if (initialValue.isNotEmpty && mounted) {
                 setState(() {
@@ -116,13 +124,16 @@ class DashboardRunnersState extends State<DashboardRunners> {
         }
       }
     } catch (e) {
-      debugPrint("Gagal mendengarkan status baterai: $e");
+      debugPrint("Gagal mendengarkan status device: $e");
     }
   }
 
-  void _cancelBatteryListener() {
+  // 🔥 PERBAIKAN: Bersihkan semua pendengar saat terputus
+  void _cancelListeners() {
     _batterySubscription?.cancel();
+    _connectionSubscription?.cancel();
     _batterySubscription = null;
+    _connectionSubscription = null;
   }
 
   Future<void> _loadLatestRunData() async {
@@ -135,11 +146,10 @@ class DashboardRunnersState extends State<DashboardRunners> {
       try {
         final List<RunSession> runs = await RunHistoryStorage.getRuns();
 
-        // Gunakan 'mounted' untuk menghindari error saat pindah layar
         if (mounted) {
           setState(() {
             _latestRunData = runs.isNotEmpty ? runs.first : null;
-            _isLoadingLatest = false; // Matikan loading
+            _isLoadingLatest = false; 
           });
         }
       } catch (e) {
@@ -352,7 +362,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
                                 onDataDownloaded: markDataDownloaded,
                                 connectedDevice: widget.connectedDevice!, 
                                 jwtToken: jwtToken,                       
-                                targetPattern: "3:2", // Fallback pattern default
                               ),
                             ),
                           );
@@ -401,9 +410,11 @@ class DashboardRunnersState extends State<DashboardRunners> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
-                              'Latest Run Data',
-                              style: TextStyle(
+                            Text(
+                              _latestRunData != null 
+                                ? _latestRunData!.title 
+                                : 'Latest Run Data',
+                              style: const TextStyle(
                                 fontWeight: FontWeight.bold,
                                 fontSize: 16,
                               ),
@@ -504,14 +515,12 @@ class DashboardRunnersState extends State<DashboardRunners> {
                                 ),
                               ),
                               const SizedBox(width: 10),
-                              
-                              // 🔥 PERUBAHAN DI SINI: Jarak -> Target Pola
                               Expanded(
                                 child: _buildStatBox(
-                                  Icons.track_changes, // Ikon diganti agar relevan dengan target
+                                  Icons.track_changes, 
                                   'Target Pola',
                                   _latestRunData!.targetPattern,
-                                  suffix: '', // Suffix "km" dihilangkan
+                                  suffix: '', 
                                 ),
                               ),
                             ],
@@ -533,6 +542,19 @@ class DashboardRunnersState extends State<DashboardRunners> {
                                   Icons.percent,
                                   'Kepatuhan',
                                   '${_latestRunData!.compliance}%',
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _buildStatBox(
+                                  Icons.air,
+                                  'Rasio LRC Aktual',
+                                  _latestRunData!.avgLrc,
+                                  suffix: 'Napas : Langkah',
                                 ),
                               ),
                             ],
@@ -577,7 +599,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
   }
 
   String _formatDate(DateTime dateTime) {
-    final DateTime localTime = dateTime.toLocal(); // 🔥 Ikutkan zona waktu lokal HP
+    final DateTime localTime = dateTime.toLocal(); 
     return '${localTime.day} ${_getMonthName(localTime.month)} ${localTime.year}, ${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 

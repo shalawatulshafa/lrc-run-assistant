@@ -11,14 +11,14 @@ class DownloadDataScreen extends StatefulWidget {
   
   final BluetoothDevice connectedDevice;
   final String jwtToken;
-  final String targetPattern;
+  
+  // 🔥 PERBAIKAN: targetPattern dihapus karena sekarang diurus otomatis oleh Backend
 
   const DownloadDataScreen({
     super.key, 
     this.onDataDownloaded,
     required this.connectedDevice,
     required this.jwtToken,
-    required this.targetPattern,
   });
 
   @override
@@ -35,87 +35,114 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
     _startRealDownload();
   }
 
+  // Fungsi khusus untuk menerjemahkan tanggal "14/05/2026, 15.29.48" di Flutter
+  DateTime _parseCustomDate(String dateString) {
+    try {
+      if (dateString.isEmpty) return DateTime.now();
+      final parts = dateString.split(', ');
+      if (parts.length != 2) return DateTime.tryParse(dateString) ?? DateTime.now();
+      
+      final dateParts = parts[0].split('/');
+      final timeParts = parts[1].split('.');
+      
+      return DateTime(
+        int.parse(dateParts[2]), // Tahun
+        int.parse(dateParts[1]), // Bulan
+        int.parse(dateParts[0]), // Tanggal
+        int.parse(timeParts[0]), // Jam
+        int.parse(timeParts[1]), // Menit
+        int.parse(timeParts[2]), // Detik
+      );
+    } catch (e) {
+      return DateTime.now();
+    }
+  }
+
   Future<void> _startRealDownload() async {
     try {
       setState(() {
         _statusText = 'Mengunduh data lari dari perangkat...';
       });
 
-      // 1. Panggil Service Sinkronisasi (Menyedot data dari ESP32)
-      final serverResponse = await RunSyncService().startSync(
-        widget.connectedDevice, 
-        widget.targetPattern, 
-        widget.jwtToken
+      // 1. Panggil Service Sinkronisasi (Sekarang hanya butuh device & token)
+      final RunSyncService syncService = RunSyncService();
+      final Map<String, dynamic> serverResponse = await syncService.startSync(
+        widget.connectedDevice,
+        widget.jwtToken,
       );
-
-      if (!mounted) return;
 
       setState(() {
-        _progress = 1.0;
-        _statusText = 'Sinkronisasi Selesai!';
+        _statusText = 'Menyimpan riwayat lari...';
       });
 
-      // Beri jeda agar tulisan 100% / Selesai terlihat oleh user
-      await Future.delayed(const Duration(milliseconds: 500));
-
-      // 2. Ambil data hasil analitik dari Node.js
-      final String id = (serverResponse['runId'] ?? '').toString();
-      final dynamic summary = serverResponse['summary'] ?? {};
-
-      // Konversi graphData dari backend ke List<double>
-      List<double> parsedGraphData = [];
-      if (summary['graphData'] != null && summary['graphData'] is List) {
-        parsedGraphData = (summary['graphData'] as List)
-            .map((e) => (e as num).toDouble())
-            .toList();
+      // 2. Tangkap Array 'runs' dari Backend
+      final List<dynamic> runsData = serverResponse['runs'] ?? [];
+      if (runsData.isEmpty) {
+        throw Exception("Tidak ada sesi lari valid yang berhasil diproses.");
       }
 
-      // 3. Buat Object RunSession Baru (Tanpa Distance)
-      final RunSession newSession = RunSession(
-        id: id,
-        title: 'Sesi Lari LRC', // Judul default, bisa diubah user nanti
-        date: DateTime.now(),
-        // distance: 0.0, // 🔥 BARIS INI DIHAPUS
-        targetPattern: widget.targetPattern, // 🔥 DITAMBAHKAN: Menyimpan pola yang dikirim
-        avgLrc: (summary['avgLrc'] ?? "-").toString(),
-        avgSpm: ((summary['avgSpm'] ?? 0) as num).toInt(),
-        compliance: ((summary['compliance'] ?? 0) as num).toInt(),
-        duration: (summary['duration'] ?? "00:00").toString(),
-        rawLrcData: parsedGraphData, // 🔥 DITAMBAHKAN: Agar grafik langsung muncul di DetailLariScreen
-      );
+      RunSession? latestSession;
 
-      // 4. Simpan ke Cache Lokal HP
-      final RunSession savedSession = await RunHistoryStorage.addRun(newSession) ?? newSession;
-      
-      // Beritahu Dashboard bahwa data baru sudah masuk
-      widget.onDataDownloaded?.call();
+      // 3. Simpan setiap sesi ke dalam Memori HP
+      for (var runItem in runsData) {
+        final summary = runItem['summary'];
+        final String runId = runItem['runId'].toString();
+
+        final RunSession newSession = RunSession(
+          id: runId,
+          title: 'Lari LRC Sesi ${summary['sessionNumber'] ?? ''}'.trim(),
+          date: _parseCustomDate(summary['startDate']?.toString() ?? ''),
+          sessionNumber: (summary['sessionNumber'] as num?)?.toInt(),
+          targetPattern: summary['targetPattern']?.toString() ?? '3:2',
+          avgLrc: summary['avgLrc']?.toString() ?? '-',
+          avgSpm: (summary['avgSpm'] as num?)?.toInt() ?? 0,
+          compliance: (summary['compliance'] as num?)?.toInt() ?? 0,
+          duration: summary['duration']?.toString() ?? '00:00',
+          // Parsing array grafik
+          rawLrcData: (summary['graphData'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? [],
+        );
+
+        // Simpan ke SharedPreferences
+        await RunHistoryStorage.saveRun(newSession);
+        
+        // Terus timpa agar mendapatkan sesi yang paling terakhir diproses
+        latestSession = newSession; 
+      }
+
+      setState(() {
+        _statusText = 'Selesai!';
+      });
+
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (widget.onDataDownloaded != null) {
+        widget.onDataDownloaded!();
+      }
 
       if (!mounted) return;
 
-      // 5. Tutup layar loading, buka layar detail lari
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DetailLariScreen(
-            runSession: savedSession,
-            onDataUpdated: () {},
+      // 4. Navigasi ke Detail Layar menggunakan Sesi Terakhir (terbaru)
+      if (latestSession != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DetailLariScreen(runSession: latestSession!),
           ),
-        ),
-      );
+        );
+      } else {
+        Navigator.pop(context); // Kembali jika entah kenapa gagal
+      }
 
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _progress = 0.0;
-        _statusText = 'Pengunduhan Gagal. Silakan coba lagi.';
+        _statusText = 'Gagal: ${e.toString()}';
       });
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+
+      // Kembali ke layar sebelumnya setelah 3 detik jika gagal
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) Navigator.pop(context);
+      });
     }
   }
 
@@ -123,17 +150,11 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      resizeToAvoidBottomInset: false,
       appBar: AppBar(
+        title: const Text('Unduh Data', style: TextStyle(color: Colors.black)),
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          // Hanya izinkan back jika error (0.0) atau selesai (1.0)
-          onPressed: (_progress == 1.0 || _progress == 0.0) 
-              ? () => Navigator.pop(context, false) 
-              : null,
-        ),
+        iconTheme: const IconThemeData(color: Colors.black),
       ),
       body: Center(
         child: Column(
@@ -158,16 +179,6 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
                       valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFFD6885D)),
                     ),
                   ),
-                  const SizedBox(height: 15),
-                  if (_progress != null)
-                    Text(
-                      '${(_progress! * 100).toInt()}%',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFD6885D),
-                      ),
-                    ),
                 ],
               ),
             ),

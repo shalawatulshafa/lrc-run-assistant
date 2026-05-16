@@ -41,56 +41,25 @@ class _SuccessScreenState extends State<SuccessScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // 🔥 FITUR BARU: Menambahkan Icon Checklist / Centang
+            const Icon(
+              Icons.check_circle,
+              color: Color(0xFFF77226),
+              size: 80, // Ukuran icon diperbesar agar terlihat jelas sebagai success screen
+            ),
+            const SizedBox(height: 20),
+            
+            // Teks Status Koneksi
             Text(
               widget.message ?? "Koneksi Berhasil!",
               style: const TextStyle(
-                fontSize: 20, 
+                fontSize: 22, // Ukuran sedikit diperbesar agar lebih proporsional dengan icon
                 fontWeight: FontWeight.bold,
                 color: Color(0xFFF77226),
               ),
             ),
-            const SizedBox(height: 20),
-            if (widget.hasNewData)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.green.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.green.shade200),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.check_circle, color: Colors.green, size: 20),
-                    SizedBox(width: 10),
-                    Text(
-                      "Data lari tersedia!",
-                      style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              )
-            else
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.orange.shade200),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                    SizedBox(width: 10),
-                    Text(
-                      "Tidak ada data baru",
-                      style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            const SizedBox(height: 30),
+            
+            // Blok "Tidak ada data baru" / "Data lari tersedia!" telah dihapus secara total
           ],
         ),
       ),

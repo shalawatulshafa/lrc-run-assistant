@@ -2,12 +2,40 @@ import prisma from '../lib/prisma.js';
 import { ok, fail } from '../lib/apiResponse.js';
 import { analyzeRunData } from '../services/analyzer.service.js';
 
-const convertPatternId = (id) => {
-  const patterns = {
-    0: "3:2",
-    1: "2:1"
-  };
-  return patterns[id] || "3:2"; 
+// Fungsi untuk menerjemahkan format tanggal '14/05/2026, 15.29.48'
+const parseCustomDate = (dateString) => {
+    try {
+        if (!dateString) return new Date();
+        
+        const parts = dateString.split(', ');
+        // Jika formatnya bukan yang diharapkan, coba fallback ke parser bawaan JavaScript
+        if (parts.length !== 2) return new Date(dateString); 
+
+        const datePart = parts[0]; // '14/05/2026'
+        const timePart = parts[1]; // '15.29.48'
+
+        const dateSplit = datePart.split('/');
+        const timeSplit = timePart.split('.');
+
+        if (dateSplit.length !== 3 || timeSplit.length !== 3) return new Date();
+
+        const day = parseInt(dateSplit[0], 10);
+        const month = parseInt(dateSplit[1], 10) - 1; // JS menghitung bulan dari 0 (Januari = 0)
+        const year = parseInt(dateSplit[2], 10);
+
+        const hour = parseInt(timeSplit[0], 10);
+        const minute = parseInt(timeSplit[1], 10);
+        const second = parseInt(timeSplit[2], 10);
+
+        const finalDate = new Date(year, month, day, hour, minute, second);
+        
+        // Pastikan hasilnya valid
+        if (isNaN(finalDate.getTime())) return new Date();
+        
+        return finalDate;
+    } catch (error) {
+        return new Date(); // Jika gagal, gunakan waktu saat ini sebagai pengaman
+    }
 };
 
 // GET /runs
@@ -17,7 +45,7 @@ export const getRuns = async (req, res, next) => {
 
         const runs = await prisma.run.findMany({
             where: { userId },
-            orderBy: { date: 'desc' },
+            orderBy: { date: 'desc' }, // Mengurutkan dari sesi lari terbaru
         });
 
         return ok(res, runs);
@@ -49,43 +77,56 @@ export const getRunById = async (req, res, next) => {
     }
 };
 
-// POST /runs/sync
+// POST /runs/sync (DIPERBARUI UNTUK MULTI-SESI)
 export const syncRun = async (req, res, next) => {
   try {
     const userId = req.user.userId;
-    const { dateTime, targetPattern, rawData } = req.body;
+    const { rawData } = req.body; 
     
-    if (!rawData || !targetPattern) {
-        return fail(res, 'VALIDATION_ERROR', 'Data sensor dan target pola diperlukan', 400);
+    if (!rawData) {
+        return fail(res, 'VALIDATION_ERROR', 'Data sensor diperlukan', 400);
     }
 
-    const patternLabel = convertPatternId(parseInt(targetPattern));
+    // 1. Analisis seluruh data yang dikirim (bisa berisi 1 atau 10 sesi sekaligus)
+    const analyzedSessions = analyzeRunData(rawData);
 
-    // Lakukan proses analisis (yang sudah menghasilkan avgLrc)
-    const analysis = analyzeRunData(rawData, patternLabel);
+    if (!analyzedSessions || analyzedSessions.length === 0) {
+        return fail(res, 'VALIDATION_ERROR', 'Tidak ada data sesi yang valid untuk disimpan', 400);
+    }
 
-    // Simpan ke database
-    const newRun = await prisma.run.create({
-      data: {
-        userId,
-        date: new Date(dateTime),
-        title: `Lari LRC ${patternLabel}`,
-        targetPattern: patternLabel, 
-        
-        avgSpm: analysis.avgSpm,
-        compliance: analysis.compliance,
-        duration: analysis.duration,
-        rawLrcData: analysis.graphData,
-        
-        // 🔥 TAMBAHAN BARU: Memastikan nilai avgLrc tersimpan ke database
-        avgLrc: analysis.avgLrc 
-      },
-    });
+    const savedRuns = [];
 
+    // 2. Lakukan perulangan untuk menyimpan setiap sesi ke Database
+    for (const session of analyzedSessions) {
+        const parsedDate = parseCustomDate(session.startDate);
+
+        const newRun = await prisma.run.create({
+            data: {
+                userId: userId,
+                date: parsedDate,                      // 🔥 Waktu asli dari alat ESP32
+                sessionNumber: session.sessionNumber,  // 🔥 Nomor urut sesi
+                title: `Lari LRC Sesi ${session.sessionNumber}`, 
+                targetPattern: session.targetPattern, 
+                avgSpm: session.avgSpm,
+                compliance: session.compliance,
+                duration: session.duration,
+                rawLrcData: session.rawLrcData,
+                avgLrc: session.avgLrc, 
+            },
+        });
+
+        savedRuns.push({
+            runId: newRun.id,
+            summary: session
+        });
+    }
+
+    // 3. Kembalikan semua data yang berhasil disinkronisasi ke Aplikasi HP
     return ok(res, { 
-        runId: newRun.id, 
-        summary: analysis // analysis.avgLrc otomatis sudah terkirim ke front-end di sini
+        message: `${savedRuns.length} sesi lari berhasil diunduh dan disimpan!`,
+        runs: savedRuns 
     }, 201);
+    
   } catch (error) {
     next(error);
   }
@@ -98,7 +139,6 @@ export const updateRun = async (req, res, next) => {
         const runId = req.params.id;
         const { title } = req.body;
 
-        // Pastikan data ini milik user yang sedang login
         const run = await prisma.run.findFirst({
             where: { id: runId, userId: userId },
         });
@@ -147,7 +187,6 @@ export const deleteAllRuns = async (req, res, next) => {
     try {
         const userId = req.user.userId;
 
-        // Menghapus semua riwayat lari milik user yang sedang login
         await prisma.run.deleteMany({
             where: { userId: userId },
         });
