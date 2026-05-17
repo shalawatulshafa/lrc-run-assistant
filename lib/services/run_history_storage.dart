@@ -22,8 +22,8 @@ class RunHistoryStorage {
 
   static Future<void> saveRuns(List<RunSession> runs) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    // 🔥 PERBAIKAN NAMA FUNGSI: Disesuaikan dengan run_session.dart yang baru
-    await prefs.setStringList(_runHistoryKey, RunSession.encodeToStringList(runs));
+    // 🔥 PERBAIKAN: Menyesuaikan nama fungsi dengan yang ada di run_session.dart
+    await prefs.setStringList(_runHistoryKey, RunSession.encodeStringList(runs));
   }
 
   static Future<List<RunSession>> getRuns() async {

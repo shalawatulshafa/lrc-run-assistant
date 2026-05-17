@@ -69,7 +69,8 @@ class HistoryScreenState extends State<HistoryScreen> {
   }
 
   String _formatDate(DateTime dateTime) {
-    return '${dateTime.day} ${_getMonthName(dateTime.month)} ${dateTime.year} • ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    final DateTime localTime = dateTime.toLocal();
+    return '${localTime.day} ${_getMonthName(localTime.month)} ${localTime.year} • ${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 
   Color _getKepatuhanColor(int percent) {
@@ -81,6 +82,33 @@ class HistoryScreenState extends State<HistoryScreen> {
   String _getLastSyncDate() {
     if (_historyData.isEmpty) return '-';
     return _formatDate(_historyData.first.date);
+  }
+
+  // 🔥 FUNGSI PEMBANTU: Memotong dan mengambil pola target terakhir saja
+  String _getLastTargetPattern(String targetStr) {
+    final String trimmed = targetStr.trim();
+    if (trimmed.isEmpty) return '-';
+    // Jika digabung dengan "&", potong dan ambil yang paling kanan (terakhir)
+    if (trimmed.contains('&')) {
+      return trimmed.split('&').last.trim();
+    }
+    // Jika digabung dengan koma
+    if (trimmed.contains(',')) {
+      return trimmed.split(',').last.trim();
+    }
+    return trimmed;
+  }
+
+  // 🔥 FUNGSI PEMBANTU: Mengambil nilai rasio LRC yang paling terakhir saja
+  String _getLastLrcValue(RunSession session) {
+    try {
+      final Map<String, String> parsedLrc = session.parsedAvgLrc;
+      if (parsedLrc.isEmpty) return session.avgLrc;
+      // Mengambil nilai paling ujung (terakhir) dari map JSON
+      return parsedLrc.values.last;
+    } catch (_) {
+      return session.avgLrc;
+    }
   }
 
   @override
@@ -201,6 +229,10 @@ class HistoryScreenState extends State<HistoryScreen> {
   }
 
   Widget _buildHistoryCard(BuildContext context, RunSession data) {
+    // 🔥 Panggil fungsi logika di atas
+    final String lastTarget = _getLastTargetPattern(data.targetPattern);
+    final String lastLrc = _getLastLrcValue(data);
+
     return GestureDetector(
       onTap: () async { 
         await Navigator.push(
@@ -269,9 +301,9 @@ class HistoryScreenState extends State<HistoryScreen> {
                   ),
                   const SizedBox(height: 6),
                   
-                  // 🔥 Teks disempurnakan: Menampilkan Target Pola, Aktual, dan Durasi dengan rapi
+                  // 🔥 Teks disempurnakan: Hanya menampilkan Target dan LRC TERAKHIR
                   Text(
-                    'Target: ${data.targetPattern} • LRC: ${data.avgLrc} • ${data.duration}',
+                    'Target: $lastTarget • LRC: $lastLrc • ${data.duration}',
                     style: const TextStyle(color: Colors.grey, fontSize: 11),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 1,

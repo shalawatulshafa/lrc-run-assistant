@@ -3,6 +3,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert'; // 🔥 1. TAMBAHAN: Dibutuhkan untuk utf8.encode (mengirim teks waktu)
 
 import 'success_screen.dart';
 import 'failed_screen.dart'; 
@@ -100,6 +101,37 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
     }
   }
 
+  // 🔥 PERBAIKAN: Fungsi penyuap waktu dengan Jeda dan Response yang benar
+  Future<void> _syncTimeToESP32(BluetoothDevice device) async {
+    try {
+      // 1. Beri jeda 1 detik agar saluran komunikasi Bluetooth stabil
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+      List<BluetoothService> services = await device.discoverServices();
+      for (BluetoothService service in services) {
+        // Gunakan .toLowerCase() agar aman dari perbedaan format huruf besar/kecil
+        if (service.uuid.toString().toLowerCase() == "4fafc201-1fb5-459e-8fcc-c5c9c331914b".toLowerCase()) {
+          for (BluetoothCharacteristic characteristic in service.characteristics) {
+            if (characteristic.uuid.toString().toLowerCase() == "beb5483e-36e1-4688-b7f5-ea07361b26a8".toLowerCase()) {
+              
+              int unixTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+              String timeCommand = "TIME:$unixTime";
+              
+              // 2. PERBAIKAN: Ubah withoutResponse menjadi false
+              await characteristic.write(utf8.encode(timeCommand), withoutResponse: false);
+              
+              debugPrint("✅ Sukses menyuapi ESP32 dengan waktu: $timeCommand");
+              return;
+            }
+          }
+        }
+      }
+      debugPrint("❌ Gagal: Karakteristik atau Service UUID tidak ditemukan di ESP32.");
+    } catch (e) {
+      debugPrint("❌ Gagal menyinkronkan waktu ke ESP32: $e");
+    }
+  }
+
   // Fungsi yang dipanggil saat user menekan salah satu perangkat di list
   Future<void> _connectToDevice(BluetoothDevice device) async {
     // Hentikan scan jika masih berjalan
@@ -112,6 +144,29 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
     try {
       // Coba hubungkan
       await device.connect(timeout: const Duration(seconds: 5));
+
+      device.connectionState.listen((BluetoothConnectionState state) {
+        if (state == BluetoothConnectionState.disconnected) {
+          debugPrint("⚠️ Peringatan: ESP32 memutus koneksi!");
+          
+          // Lakukan pembaruan UI di sini.
+          // Contoh 1: Jika Anda menggunakan setState (pastikan mounted)
+          if (mounted) {
+            setState(() {
+              _isConnecting = false;
+              // Ubah variabel status koneksi Anda yang lain menjadi false
+            });
+            
+            // Contoh 2: Tampilkan pesan ke user
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Koneksi ke alat terputus.")),
+            );
+          }
+        }
+      });
+      
+      // 🔥 3. PANGGIL DI SINI: Begitu sukses connect, langsung tembak waktunya!
+      await _syncTimeToESP32(device);
       
       bool hasData = false;
       if (widget.onCheckData != null) {
@@ -122,7 +177,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
 
       if (!mounted) return;
 
-      // Masuk ke Success Screen
+      // Masuk ke Success Screen (100% utuh tanpa merusak parameter Anda)
       final resultData = await Navigator.push(
         context,
         MaterialPageRoute(
@@ -141,7 +196,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
       print("Gagal Connect: $e");
       if (!mounted) return;
       
-      // Jika gagal, masuk ke Failed Screen
+      // Jika gagal, masuk ke Failed Screen (100% utuh tanpa merusak parameter Anda)
       await Navigator.push(
         context,
         MaterialPageRoute(

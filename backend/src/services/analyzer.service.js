@@ -1,110 +1,72 @@
-/**
- * analyzer.service.js
- * Diperbarui khusus untuk format Snapshot 7 Kolom terbaru dari ESP32
- * Format: sesi,mulai_lari,waktu_ms,breathPhase,step,spm,patternID
- */
-
 export const analyzeRunData = (rawData) => {
-    // 1. Validasi Input
     if (!rawData || typeof rawData !== 'string') return [];
 
-    // Pisahkan baris per baris berdasarkan enter atau titik koma
     const rawLines = rawData.split(/[\n;]/).filter(row => row.trim() !== '');
-
     const sessionsMap = {};
 
-    // 2. PARSING CSV (Disempurnakan untuk 7 Kolom)
     rawLines.forEach(line => {
-        // 🔥 FITUR BARU: Melewati baris header (judul kolom) atau baris EOF
         if (line.toLowerCase().includes('sesi') || line.includes('EOF')) return;
 
-        // Karena format tanggal adalah "15/05/2026, 17.00.53" (ada koma di dalamnya),
-        // maka saat di-split dengan koma, array akan terpecah menjadi 8 bagian (indeks 0-7)
         const parts = line.split(',');
-        
-        // Pastikan baris ini memiliki data yang utuh (minimal 8 pecahan)
         if (parts.length < 8) return;
 
         const sessionId = parts[0].trim();
-        // Menggabungkan kembali tanggal dan jam, serta membuang tanda kutip (")
         const rawDate = `${parts[1].replace(/"/g, '').trim()}, ${parts[2].replace(/"/g, '').trim()}`;
-        
-        // 🔥 PERBAIKAN INDEKS (Assign Variabel yang Benar)
         const timestamp = parseInt(parts[3]);
-        const breathPhase = parseInt(parts[4]); // 1 (Inhale), -1 (Exhale), 0 (Netral)
-        const step = parseInt(parts[5]);        // 1 (Langkah), 0 (Tidak ada)
-        const spm = parseFloat(parts[6]);       // 90.0 (Data desimal)
-        const patternID = parseInt(parts[7]);   // 0 (3:2), 1 (2:1), dst.
+        const breathPhase = parseInt(parts[4]); 
+        const step = parseInt(parts[5]);        
+        const spm = parseFloat(parts[6]);       
+        const patternID = parseInt(parts[7]);   
 
-        // Inisialisasi sesi jika belum ada di Map
         if (!sessionsMap[sessionId]) {
             sessionsMap[sessionId] = {
                 startDate: rawDate,
-                targetPatternId: patternID, // Ambil target pola dari baris pertama sesi ini
                 spmSum: 0,
                 spmCount: 0,
                 startTime: timestamp,
                 endTime: timestamp,
-                
-                // Variabel untuk menghitung Napas & Langkah (LRC)
-                currentPhase: null, // 'IN' atau 'EX'
+                currentPhase: null, 
                 currentInhaleSteps: 0,
                 currentExhaleSteps: 0,
                 cycles: [],
-                totalInhaleStepsAll: 0,
-                totalExhaleStepsAll: 0,
-                totalCycles: 0
+                targetPatternsUsed: new Set() // Melacak pola apa saja yang dipakai di sesi ini
             };
         }
 
         const session = sessionsMap[sessionId];
-        
-        // Update waktu akhir setiap kali ada baris baru
         session.endTime = Math.max(session.endTime, timestamp);
+        session.targetPatternsUsed.add(patternID); // Daftarkan pola yang aktif
 
-        // Kumpulkan rata-rata SPM
         if (!isNaN(spm) && spm > 0) {
             session.spmSum += spm;
             session.spmCount++;
         }
 
-        // --- 3. LOGIKA LRC SNAPSHOT (Fase Napas + Langkah sekaligus) ---
-        
-        // A. Cek perubahan fase napas terlebih dahulu
-        if (breathPhase === 1) { // Mulai Tarik Napas (INHALE)
+        if (breathPhase === 1) { // INHALE
             if (session.currentPhase === 'EX') {
-                // Berarti 1 siklus napas (Tarik -> Hembus) telah selesai. Simpan datanya!
                 if (session.currentInhaleSteps > 0 || session.currentExhaleSteps > 0) {
                     session.cycles.push({
                         in: session.currentInhaleSteps,
-                        ex: session.currentExhaleSteps
+                        ex: session.currentExhaleSteps,
+                        // 🔥 SIMPAN POLA TARGET AKTIF PADA SIKLUS INI
+                        activeTargetPatternId: patternID 
                     });
-                    session.totalInhaleStepsAll += session.currentInhaleSteps;
-                    session.totalExhaleStepsAll += session.currentExhaleSteps;
-                    session.totalCycles++;
                 }
-                // Reset hitungan langkah untuk siklus yang baru
                 session.currentInhaleSteps = 0;
                 session.currentExhaleSteps = 0;
             }
             session.currentPhase = 'IN';
         } 
-        else if (breathPhase === -1) { // Mulai Hembus Napas (EXHALE)
+        else if (breathPhase === -1) { // EXHALE
             session.currentPhase = 'EX';
         }
-        // (Jika breathPhase === 0, berarti masih netral, tetap di currentPhase sebelumnya)
 
-        // B. Cek apakah ada langkah kaki di baris/waktu ini
         if (step === 1) {
-            if (session.currentPhase === 'IN') {
-                session.currentInhaleSteps++;
-            } else if (session.currentPhase === 'EX') {
-                session.currentExhaleSteps++;
-            }
+            if (session.currentPhase === 'IN') session.currentInhaleSteps++;
+            else if (session.currentPhase === 'EX') session.currentExhaleSteps++;
         }
     });
 
-    // 4. MENGHITUNG KESIMPULAN PER SESI
     const convertPatternId = (id) => {
         const map = { 0: "3:2", 1: "2:1", 2: "2:2", 3: "3:3", 4: "4:4", 5: "4:3", 6: "1:1" };
         return map[id] || "3:2";
@@ -130,44 +92,62 @@ export const analyzeRunData = (rawData) => {
 
     const analyzedSessions = [];
 
-    // Loop semua sesi yang sudah dikelompokkan
     for (const [sessionId, session] of Object.entries(sessionsMap)) {
-        const targetPattern = convertPatternId(session.targetPatternId);
-        
-        // Hitung Durasi (ms ke menit:detik)
         const durationMs = session.endTime - session.startTime;
         const durationSeconds = Math.max(0, Math.floor(durationMs / 1000));
         const minutes = Math.floor(durationSeconds / 60);
         const seconds = durationSeconds % 60;
         const formattedDuration = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
-        // Evaluasi Kepatuhan & Persiapkan Data Grafik
         let matchCount = 0;
+        let totalCycles = 0;
         let graphDataPoints = [];
+        
+        // 🔥 VARIABEL KANTONG UNTUK MENGHITUNG RATA-RATA BERDASARKAN POLA
+        const averagesMap = {}; 
 
         session.cycles.forEach(cycle => {
             const actualPattern = detectActualPattern(cycle.in, cycle.ex);
-            
-            // Cek kepatuhan (Apakah pola aslinya sama dengan target alat?)
-            if (actualPattern === targetPattern || 
-               (targetPattern === "3:2" && cycle.in === 3 && cycle.ex === 2) ||
-               (targetPattern === "2:1" && cycle.in === 2 && cycle.ex === 1)) {
+            const targetPatternStr = convertPatternId(cycle.activeTargetPatternId);
+
+            // 1. Hitung Kepatuhan Dinamis (Dicocokkan dengan pola target SAAT ITU)
+            if (actualPattern === targetPatternStr || 
+               (targetPatternStr === "3:2" && cycle.in === 3 && cycle.ex === 2) ||
+               (targetPatternStr === "2:1" && cycle.in === 2 && cycle.ex === 1)) {
                 matchCount++;
             }
+            totalCycles++;
 
+            // 2. Kumpulkan langkah untuk dihitung rata-ratanya (Dipisah per pola)
+            if (!averagesMap[targetPatternStr]) {
+                averagesMap[targetPatternStr] = { inSum: 0, exSum: 0, count: 0 };
+            }
+            averagesMap[targetPatternStr].inSum += cycle.in;
+            averagesMap[targetPatternStr].exSum += cycle.ex;
+            averagesMap[targetPatternStr].count++;
+
+            // 3. Persiapkan Data Grafik (Kini disisipkan atribut 'pattern' untuk warna)
             graphDataPoints.push({
                 y: mapPatternToY(actualPattern),
-                in: cycle.in,
-                ex: cycle.ex
+                targetPattern: targetPatternStr
             });
         });
 
-        // Hitung Kepatuhan (%)
-        const compliance = session.totalCycles > 0 
-            ? Math.round((matchCount / session.totalCycles) * 100) 
+        const compliance = totalCycles > 0 
+            ? Math.round((matchCount / totalCycles) * 100) 
             : 0;
 
-        // Smoothing Grafik (Agar garis di aplikasi Flutter tidak terlalu tajam/naik-turun drastis)
+        // 🔥 UBAH RATA-RATA MENJADI STRING JSON UNTUK DISIMPAN DI PRISMA
+        const finalAvgLrcObj = {};
+        for (const [patt, stats] of Object.entries(averagesMap)) {
+            const avgIn = (stats.inSum / stats.count).toFixed(1);
+            const avgEx = (stats.exSum / stats.count).toFixed(1);
+            finalAvgLrcObj[patt] = `${avgIn} : ${avgEx}`;
+        }
+        // Contoh Output: '{"3:2": "3.1 : 2.0", "2:1": "2.0 : 1.1"}'
+        const avgLrcJsonString = JSON.stringify(finalAvgLrcObj); 
+
+        // Smoothing Grafik (Rata-rata pergeseran agar tidak tajam), tapi tetap simpan atribut pattern-nya
         let finalGraphData = [];
         for (let i = 0; i < graphDataPoints.length; i++) {
             let sumY = 0;
@@ -176,23 +156,25 @@ export const analyzeRunData = (rawData) => {
                 sumY += graphDataPoints[j].y;
                 count++;
             }
-            finalGraphData.push(parseFloat((sumY / count).toFixed(2)));
+            finalGraphData.push({
+                y: parseFloat((sumY / count).toFixed(2)),
+                pattern: graphDataPoints[i].targetPattern // Simpan identitas pola target di titik ini
+            });
         }
 
-        // Rata-Rata Rasio LRC Aktual (Napas : Langkah)
-        const avgInhale = session.totalCycles > 0 ? (session.totalInhaleStepsAll / session.totalCycles).toFixed(1) : "0.0";
-        const avgExhale = session.totalCycles > 0 ? (session.totalExhaleStepsAll / session.totalCycles).toFixed(1) : "0.0";
+        // Tentukan Judul Pola Sesi (Misal: Jika pakai 2 pola, akan jadi "3:2 & 2:1")
+        const patternsArray = Array.from(session.targetPatternsUsed).map(id => convertPatternId(id));
+        const sessionTargetPatternStr = patternsArray.join(" & ");
 
-        // Masukkan hasil akhir untuk dikirim ke Flutter
         analyzedSessions.push({
             sessionNumber: parseInt(sessionId),
             startDate: session.startDate, 
-            targetPattern: targetPattern,
+            targetPattern: sessionTargetPatternStr,
             duration: formattedDuration,
             avgSpm: session.spmCount > 0 ? Math.round(session.spmSum / session.spmCount) : 0,
             compliance: compliance,
-            avgLrc: `${avgInhale} : ${avgExhale}`,
-            rawLrcData: finalGraphData
+            avgLrc: avgLrcJsonString, // Data sudah aman sebagai String Json
+            rawLrcData: finalGraphData // Data sudah berupa array Objek dengan properti 'pattern'
         });
     }
 

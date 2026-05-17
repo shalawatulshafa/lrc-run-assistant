@@ -8,11 +8,10 @@ const parseCustomDate = (dateString) => {
         if (!dateString) return new Date();
         
         const parts = dateString.split(', ');
-        // Jika formatnya bukan yang diharapkan, coba fallback ke parser bawaan JavaScript
         if (parts.length !== 2) return new Date(dateString); 
 
-        const datePart = parts[0]; // '14/05/2026'
-        const timePart = parts[1]; // '15.29.48'
+        const datePart = parts[0]; 
+        const timePart = parts[1]; 
 
         const dateSplit = datePart.split('/');
         const timeSplit = timePart.split('.');
@@ -20,14 +19,20 @@ const parseCustomDate = (dateString) => {
         if (dateSplit.length !== 3 || timeSplit.length !== 3) return new Date();
 
         const day = parseInt(dateSplit[0], 10);
-        const month = parseInt(dateSplit[1], 10) - 1; // JS menghitung bulan dari 0 (Januari = 0)
+        // JS Date biasa menghitung bulan dari 0, tapi untuk string ISO kita pakai angka aslinya (1-12)
+        const month = parseInt(dateSplit[1], 10); 
         const year = parseInt(dateSplit[2], 10);
 
         const hour = parseInt(timeSplit[0], 10);
         const minute = parseInt(timeSplit[1], 10);
         const second = parseInt(timeSplit[2], 10);
 
-        const finalDate = new Date(year, month, day, hour, minute, second);
+        // 🔥 PERBAIKAN: Format menjadi Standar ISO dengan zona waktu WIB (+07:00)
+        // Kita beritahu database bahwa waktu ini adalah murni waktu Indonesia (WIB)
+        const pad = (n) => n.toString().padStart(2, '0');
+        const isoString = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}+07:00`;
+        
+        const finalDate = new Date(isoString);
         
         // Pastikan hasilnya valid
         if (isNaN(finalDate.getTime())) return new Date();
@@ -77,7 +82,7 @@ export const getRunById = async (req, res, next) => {
     }
 };
 
-// POST /runs/sync (DIPERBARUI UNTUK MULTI-SESI)
+// POST /runs/sync (DIPERBARUI UNTUK MENCEGAH DUPLIKAT DATA MULTI-SESI)
 export const syncRun = async (req, res, next) => {
   try {
     const userId = req.user.userId;
@@ -100,23 +105,50 @@ export const syncRun = async (req, res, next) => {
     for (const session of analyzedSessions) {
         const parsedDate = parseCustomDate(session.startDate);
 
-        const newRun = await prisma.run.create({
-            data: {
+        // 🔥 PERBAIKAN: Cek apakah sesi dengan tanggal dan user ini sudah pernah diunduh
+        const existingRun = await prisma.run.findFirst({
+            where: {
                 userId: userId,
-                date: parsedDate,                      // 🔥 Waktu asli dari alat ESP32
-                sessionNumber: session.sessionNumber,  // 🔥 Nomor urut sesi
-                title: `Lari LRC Sesi ${session.sessionNumber}`, 
-                targetPattern: session.targetPattern, 
-                avgSpm: session.avgSpm,
-                compliance: session.compliance,
-                duration: session.duration,
-                rawLrcData: session.rawLrcData,
-                avgLrc: session.avgLrc, 
-            },
+                date: parsedDate,
+                sessionNumber: session.sessionNumber
+            }
         });
 
+        let savedRun;
+
+        if (existingRun) {
+            // Jika sudah ada (duplikat), timpa datanya agar riwayat tidak berlipat ganda
+            savedRun = await prisma.run.update({
+                where: { id: existingRun.id },
+                data: {
+                    targetPattern: session.targetPattern, 
+                    avgSpm: session.avgSpm,
+                    compliance: session.compliance,
+                    duration: session.duration,
+                    rawLrcData: session.rawLrcData,
+                    avgLrc: session.avgLrc,
+                }
+            });
+        } else {
+            // Jika belum ada, buat sesi baru
+            savedRun = await prisma.run.create({
+                data: {
+                    userId: userId,
+                    date: parsedDate,                      // Waktu asli dari alat ESP32
+                    sessionNumber: session.sessionNumber,  // Nomor urut sesi
+                    title: `Lari LRC Sesi ${session.sessionNumber}`, 
+                    targetPattern: session.targetPattern, 
+                    avgSpm: session.avgSpm,
+                    compliance: session.compliance,
+                    duration: session.duration,
+                    rawLrcData: session.rawLrcData,
+                    avgLrc: session.avgLrc, 
+                },
+            });
+        }
+
         savedRuns.push({
-            runId: newRun.id,
+            runId: savedRun.id,
             summary: session
         });
     }

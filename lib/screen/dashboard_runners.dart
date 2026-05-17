@@ -1,6 +1,6 @@
 ﻿import 'dart:async'; 
 import 'package:flutter/material.dart';
-
+import 'dart:convert';
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
 import 'download_data_screen.dart';
@@ -14,7 +14,6 @@ class DashboardRunners extends StatefulWidget {
   final BluetoothDevice? connectedDevice;
   final VoidCallback? onDataSaved;
   final bool hasNewDataFromBle;
-  // 🔥 PERBAIKAN: Menambahkan parameter onConnectionChanged agar tidak error
   final Function(bool)? onConnectionChanged; 
 
   const DashboardRunners({
@@ -24,7 +23,7 @@ class DashboardRunners extends StatefulWidget {
     this.onDataSaved,
     this.hasNewDataFromBle = false,
     this.connectedDevice,
-    this.onConnectionChanged, // 🔥 Mendaftarkan parameter
+    this.onConnectionChanged, 
   });
 
   @override
@@ -38,7 +37,6 @@ class DashboardRunnersState extends State<DashboardRunners> {
   bool _hasNewData = false;
 
   StreamSubscription<List<int>>? _batterySubscription;
-  // 🔥 FITUR BARU: Listener untuk mendeteksi ESP32 yang mati mendadak
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
 
   @override
@@ -48,7 +46,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
     _hasNewData = widget.hasNewDataFromBle;
     
     if (widget.isConnectedFromMain && widget.connectedDevice != null) {
-      _initDeviceListeners(); // 🔥 Panggil fungsi gabungan
+      _initDeviceListeners(); 
     }
   }
 
@@ -62,11 +60,11 @@ class DashboardRunnersState extends State<DashboardRunners> {
     }
 
     if (widget.isConnectedFromMain && !oldWidget.isConnectedFromMain && widget.connectedDevice != null) {
-      _initDeviceListeners(); // 🔥 Panggil fungsi gabungan
+      _initDeviceListeners(); 
     }
     
     if (!widget.isConnectedFromMain && oldWidget.isConnectedFromMain) {
-      _cancelListeners(); // 🔥 Hapus semua listener
+      _cancelListeners(); 
       setState(() => batteryLevel = 0);
     }
   }
@@ -77,12 +75,10 @@ class DashboardRunnersState extends State<DashboardRunners> {
     super.dispose();
   }
 
-  // 🔥 FITUR BARU: Gabungan Listener Koneksi & Baterai
   Future<void> _initDeviceListeners() async {
     try {
       final device = widget.connectedDevice!;
       
-      // 1. DENGARKAN STATUS KONEKSI (Jika alat mati, otomatis disconnect)
       _connectionSubscription?.cancel();
       _connectionSubscription = device.connectionState.listen((state) {
         if (state == BluetoothConnectionState.disconnected) {
@@ -90,13 +86,11 @@ class DashboardRunnersState extends State<DashboardRunners> {
             setState(() {
               batteryLevel = 0;
             });
-            // Beritahu main_navigation bahwa koneksi terputus!
             widget.onConnectionChanged?.call(false); 
           }
         }
       });
 
-      // 2. DENGARKAN BATERAI
       List<BluetoothService> services = await device.discoverServices();
       for (var service in services) {
         if (service.uuid.toString().toUpperCase().contains("180F")) {
@@ -128,12 +122,42 @@ class DashboardRunnersState extends State<DashboardRunners> {
     }
   }
 
-  // 🔥 PERBAIKAN: Bersihkan semua pendengar saat terputus
   void _cancelListeners() {
     _batterySubscription?.cancel();
     _connectionSubscription?.cancel();
     _batterySubscription = null;
     _connectionSubscription = null;
+  }
+
+  // Fungsi untuk menembak waktu ke ESP32
+  Future<void> syncTimeToESP32(BluetoothDevice device) async {
+    try {
+      // 1. Cari service dan karakteristik yang sesuai dengan ESP32 Anda
+      List<BluetoothService> services = await device.discoverServices();
+      for (BluetoothService service in services) {
+        if (service.uuid.toString() == "4fafc201-1fb5-459e-8fcc-c5c9c331914b") {
+          for (BluetoothCharacteristic characteristic in service.characteristics) {
+            if (characteristic.uuid.toString() == "beb5483e-36e1-4688-b7f5-ea07361b26a8") {
+              
+              // 2. Ambil waktu saat ini dalam format Unix Timestamp (Detik)
+              // millisecondsSinceEpoch dibagi 1000 agar menjadi detik (standar Unix)
+              int unixTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+              
+              // 3. Rangkai pesan sesuai konsep Anda
+              String timeCommand = "TIME:$unixTime";
+              
+              // 4. Tembakkan ke ESP32 secara diam-diam (push)
+              await characteristic.write(utf8.encode(timeCommand), withoutResponse: true);
+              
+              print("Berhasil menyuapi ESP32 dengan waktu: $timeCommand");
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print("Gagal menyinkronkan waktu ke ESP32: $e");
+    }
   }
 
   Future<void> _loadLatestRunData() async {
@@ -181,7 +205,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
     widget.onDataSaved?.call();
   }
 
-  bool get canDownload => widget.isConnectedFromMain && _hasNewData;
+  bool get canDownload => widget.isConnectedFromMain;
 
   @override
   Widget build(BuildContext context) {
@@ -287,41 +311,32 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
               ),
               const SizedBox(height: 20),
+              
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: isConnected
-                      ? (_hasNewData ? Colors.green.shade50 : Colors.blue.shade50)
-                      : Colors.orange.shade50,
+                  color: isConnected ? Colors.blue.shade50 : Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: isConnected
-                        ? (_hasNewData ? Colors.green.shade200 : Colors.blue.shade200)
-                        : Colors.orange.shade200,
+                    color: isConnected ? Colors.blue.shade200 : Colors.orange.shade200,
                   ),
                 ),
                 child: Row(
                   children: [
                     Icon(
-                      isConnected
-                          ? (_hasNewData ? Icons.check_circle : Icons.info_outline)
-                          : Icons.bluetooth_disabled,
-                      color: isConnected ? (_hasNewData ? Colors.green : Colors.blue) : Colors.orange,
+                      isConnected ? Icons.check_circle : Icons.bluetooth_disabled,
+                      color: isConnected ? Colors.blue : Colors.orange,
                       size: 20,
                     ),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         isConnected
-                            ? (_hasNewData
-                                ? 'Data lari siap diunduh!'
-                                : 'Tidak ada data baru. Silakan lari dulu.')
+                            ? 'Koneksi Berhasil!'
                             : 'Chest strap tidak terhubung. Klik tombol +',
                         style: TextStyle(
                           fontSize: 12,
-                          color: isConnected
-                              ? (_hasNewData ? Colors.green.shade800 : Colors.blue.shade800)
-                              : Colors.orange.shade800,
+                          color: isConnected ? Colors.blue.shade800 : Colors.orange.shade800,
                         ),
                       ),
                     ),
@@ -329,6 +344,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
               ),
               const SizedBox(height: 20),
+              
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -377,9 +393,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                     color: canDownload ? Colors.black87 : Colors.grey,
                   ),
                   label: Text(
-                    !isConnected
-                        ? 'Koneksi tidak tersedia'
-                        : (!_hasNewData ? 'Tidak ada data baru' : 'Unduh Data Lari'),
+                    isConnected ? 'Unduh Data Lari' : 'Koneksi tidak tersedia',
                     style: TextStyle(
                       color: canDownload ? Colors.black87 : Colors.grey,
                       fontWeight: FontWeight.bold,
@@ -395,6 +409,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
                 ),
               ),
               const SizedBox(height: 20),
+              
               Container(
                 padding: const EdgeInsets.all(15),
                 decoration: BoxDecoration(
@@ -549,12 +564,10 @@ class DashboardRunnersState extends State<DashboardRunners> {
                           const SizedBox(height: 10),
                           Row(
                             children: [
+                              // 🔥 PERBAIKAN: Mengganti kotak statis dengan kotak Swipeable
                               Expanded(
-                                child: _buildStatBox(
-                                  Icons.air,
-                                  'Rasio LRC Aktual',
-                                  _latestRunData!.avgLrc,
-                                  suffix: 'Napas : Langkah',
+                                child: _SwipeableDashboardLrcCard(
+                                  lrcData: _latestRunData!.parsedAvgLrc,
                                 ),
                               ),
                             ],
@@ -736,6 +749,127 @@ class DashboardRunnersState extends State<DashboardRunners> {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ==========================================
+// 🔥 FITUR BARU: KOMPONEN SWIPEABLE UNTUK DASHBOARD
+// ==========================================
+class _SwipeableDashboardLrcCard extends StatefulWidget {
+  final Map<String, String> lrcData;
+  const _SwipeableDashboardLrcCard({required this.lrcData});
+
+  @override
+  __SwipeableDashboardLrcCardState createState() => __SwipeableDashboardLrcCardState();
+}
+
+class __SwipeableDashboardLrcCardState extends State<_SwipeableDashboardLrcCard> {
+  final PageController _pageController = PageController();
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = widget.lrcData.entries.toList();
+    final bool isMulti = entries.length > 1;
+
+    return Container(
+      height: 100, // Tinggi statis agar sejajar dan PageView tidak error
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1EB),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: isMulti 
+        ? Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.air, color: Color(0xFFF77226), size: 16),
+                  SizedBox(width: 5),
+                  Text(
+                    'Rasio LRC Aktual',
+                    style: TextStyle(color: Color(0xFFF77226), fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 5),
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) => setState(() => _currentIndex = index),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    return RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: entries[index].value,
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' Napas:Langkah (${entries[index].key})',
+                            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+              // Indikator Titik
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(entries.length, (index) => Container(
+                  margin: const EdgeInsets.only(top: 2, left: 2, right: 2),
+                  width: 5, height: 5,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _currentIndex == index ? const Color(0xFFF77226) : Colors.orange.shade200,
+                  )
+                )),
+              )
+            ],
+          )
+        : Column( // TAMPILAN NORMAL (STATIS) JIKA HANYA 1 POLA
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: const [
+                  Icon(Icons.air, color: Color(0xFFF77226), size: 16),
+                  SizedBox(width: 5),
+                  Text(
+                    'Rasio LRC Aktual',
+                    style: TextStyle(color: Color(0xFFF77226), fontSize: 12),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              RichText(
+                text: TextSpan(
+                  children: [
+                    TextSpan(
+                      text: entries.isNotEmpty ? entries.first.value : '-',
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' Napas : Langkah',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
     );
   }
 }

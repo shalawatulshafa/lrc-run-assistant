@@ -76,6 +76,16 @@ class RunSyncService {
         }
       });
 
+      // 🔥 1. TAMBAHAN: TEMBAK WAKTU TERLEBIH DAHULU
+      print("Mengirim sinkronisasi waktu ke ESP32...");
+      int unixTime = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      String timeCommand = "TIME:$unixTime";
+      await targetChar.write(utf8.encode(timeCommand), withoutResponse: false);
+      
+      // 🔥 2. JEDA SEJENAK: Beri waktu ESP32 untuk mengatur jam RTC-nya
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // 🔥 3. BARU KIRIM SYNC
       print("Mengirim perintah SYNC ke ESP32...");
       await targetChar.write(utf8.encode("SYNC"), withoutResponse: false);
 

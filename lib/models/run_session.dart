@@ -1,22 +1,42 @@
 ﻿import 'dart:convert';
 
+// 🔥 KELAS BARU: Untuk menyimpan titik grafik + warna polanya
+class LrcPoint {
+  final double y;
+  final String pattern;
+
+  const LrcPoint({required this.y, required this.pattern});
+
+  factory LrcPoint.fromJson(Map<String, dynamic> json) {
+    return LrcPoint(
+      y: (json['y'] as num?)?.toDouble() ?? 0.0,
+      pattern: json['pattern']?.toString() ?? "3:2",
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'y': y,
+    'pattern': pattern,
+  };
+}
+
 class RunSession {
   final String id;
   final String title;
   final DateTime date;
-  final int? sessionNumber; // 🔥 TAMBAHAN BARU: Menyimpan urutan sesi
+  final int? sessionNumber; 
   final String targetPattern;
   final String avgLrc;
   final int avgSpm;
   final int compliance;
   final String duration;
-  final List<double> rawLrcData; 
+  final List<LrcPoint> rawLrcData;
 
   const RunSession({
     required this.id,
     required this.title,
     required this.date,
-    this.sessionNumber, // 🔥 Opsional tapi penting
+    this.sessionNumber, 
     required this.targetPattern,
     required this.avgLrc,
     required this.avgSpm,
@@ -25,60 +45,7 @@ class RunSession {
     this.rawLrcData = const [],
   });
 
-  factory RunSession.fromJson(Map<String, dynamic> json) {
-    final dynamic rawDate = json['date'] ?? json['dateTime'];
-    DateTime parsedDate;
-    
-    // Konversi waktu ke zona waktu HP (WIB / UTC+7)
-    if (rawDate is DateTime) {
-      parsedDate = rawDate.toLocal();
-    } else {
-      parsedDate = (DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now()).toLocal();
-    }
-
-    // Parsing data grafik dari backend agar aman menjadi List<double>
-    List<double> parsedGraphData = [];
-    if (json['rawLrcData'] != null && json['rawLrcData'] is List) {
-      parsedGraphData = (json['rawLrcData'] as List)
-          .map((e) => (e as num).toDouble())
-          .toList();
-    }
-
-    final dynamic rawDuration = json['duration'];
-    String formattedDuration;
-    if (rawDuration is num) {
-      formattedDuration = _secondsToDuration(rawDuration.toInt());
-    } else {
-      formattedDuration = rawDuration?.toString() ?? '00:00';
-    }
-
-    return RunSession(
-      id: json['id']?.toString() ?? '',
-      title: json['title'] ?? 'Sesi Lari',
-      date: parsedDate,
-      sessionNumber: json['sessionNumber'] != null ? (json['sessionNumber'] as num).toInt() : null, // 🔥 Ambil dari JSON
-      targetPattern: json['targetPattern']?.toString() ?? '3:2',
-      avgLrc: json['avgLrc']?.toString() ?? '-',
-      avgSpm: (json['avgSpm'] ?? 0).toInt(),
-      compliance: (json['compliance'] ?? 0).toInt(),
-      duration: formattedDuration,
-      rawLrcData: parsedGraphData, 
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'date': date.toIso8601String(),
-    'sessionNumber': sessionNumber, // 🔥 Pastikan tersimpan ke memori lokal
-    'targetPattern': targetPattern,
-    'avgLrc': avgLrc,
-    'avgSpm': avgSpm,
-    'compliance': compliance,
-    'duration': duration,
-    'rawLrcData': rawLrcData, // 🔥 Simpan grafik ke memori lokal
-  };
-
+  // 🔥 PERBAIKAN: Menambahkan fungsi copyWith untuk edit judul dll
   RunSession copyWith({
     String? id,
     String? title,
@@ -89,7 +56,7 @@ class RunSession {
     int? avgSpm,
     int? compliance,
     String? duration,
-    List<double>? rawLrcData,
+    List<LrcPoint>? rawLrcData,
   }) {
     return RunSession(
       id: id ?? this.id,
@@ -103,6 +70,70 @@ class RunSession {
       duration: duration ?? this.duration,
       rawLrcData: rawLrcData ?? this.rawLrcData,
     );
+  }
+
+  // Helper untuk memecah String JSON avgLrc menjadi Map
+  Map<String, String> get parsedAvgLrc {
+    try {
+      if (avgLrc.startsWith('{')) {
+        final Map<String, dynamic> decoded = jsonDecode(avgLrc);
+        return decoded.map((key, value) => MapEntry(key, value.toString()));
+      }
+    } catch (_) {
+      // Abaikan jika error parsing
+    }
+    return { targetPattern: avgLrc };
+  }
+
+  factory RunSession.fromJson(Map<String, dynamic> json) {
+    final dynamic rawDate = json['date'] ?? json['dateTime'];
+    DateTime parsedDate;
+    
+    if (rawDate is DateTime) {
+      parsedDate = rawDate.toLocal();
+    } else {
+      parsedDate = (DateTime.tryParse(rawDate?.toString() ?? '') ?? DateTime.now()).toLocal();
+    }
+
+    List<LrcPoint> parsedGraphData = [];
+    if (json['rawLrcData'] != null && json['rawLrcData'] is List) {
+      parsedGraphData = (json['rawLrcData'] as List).map((e) {
+        if (e is num) {
+          return LrcPoint(y: e.toDouble(), pattern: json['targetPattern']?.toString() ?? "3:2");
+        } else if (e is Map) {
+          return LrcPoint.fromJson(Map<String, dynamic>.from(e));
+        }
+        return const LrcPoint(y: 0.0, pattern: "3:2");
+      }).toList();
+    }
+
+    return RunSession(
+      id: json['id']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'Lari LRC',
+      date: parsedDate,
+      sessionNumber: json['sessionNumber'] != null ? int.tryParse(json['sessionNumber'].toString()) : null,
+      targetPattern: json['targetPattern']?.toString() ?? '-',
+      avgLrc: json['avgLrc']?.toString() ?? '0.0 : 0.0',
+      avgSpm: int.tryParse(json['avgSpm']?.toString() ?? '0') ?? 0,
+      compliance: int.tryParse(json['compliance']?.toString() ?? '0') ?? 0,
+      duration: json['duration']?.toString() ?? '00:00',
+      rawLrcData: parsedGraphData,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'title': title,
+      'date': date.toIso8601String(),
+      'sessionNumber': sessionNumber,
+      'targetPattern': targetPattern,
+      'avgLrc': avgLrc,
+      'avgSpm': avgSpm,
+      'compliance': compliance,
+      'duration': duration,
+      'rawLrcData': rawLrcData.map((e) => e.toJson()).toList(), 
+    };
   }
 
   int get durationSeconds {
@@ -124,27 +155,20 @@ class RunSession {
     return int.tryParse(trimmed) ?? 0;
   }
 
-  static String _secondsToDuration(int totalSeconds) {
-    final int safeSeconds = totalSeconds < 0 ? 0 : totalSeconds;
-    final int minutes = safeSeconds ~/ 60;
-    final int seconds = safeSeconds % 60;
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-  }
-
   static List<RunSession> decodeStringList(List<String> rawData) {
     final List<RunSession> result = [];
     for (final String item in rawData) {
       try {
-        final Map<String, dynamic> jsonMap = jsonDecode(item);
-        result.add(RunSession.fromJson(jsonMap));
+        final Map<String, dynamic> map = jsonDecode(item);
+        result.add(RunSession.fromJson(map));
       } catch (e) {
-        // Abaikan data yang corrupt
+        // Abaikan
       }
     }
     return result;
   }
 
-  static List<String> encodeToStringList(List<RunSession> sessions) {
-    return sessions.map((s) => jsonEncode(s.toJson())).toList();
+  static List<String> encodeStringList(List<RunSession> sessions) {
+    return sessions.map((e) => jsonEncode(e.toJson())).toList();
   }
 }

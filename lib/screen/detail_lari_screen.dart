@@ -26,7 +26,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   RunSession? _runSession;
   
   bool _isLoading = true; 
-  List<double> _chartData = []; 
+  List<LrcPoint> _chartData = []; 
 
   @override
   void initState() {
@@ -43,13 +43,12 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
       _runSession = widget.runSession;
       _currentTitle = widget.runSession!.title;
       targetId = widget.runSession!.id;
-      _chartData = _runSession!.rawLrcData; // 🔥 Langsung ambil grafik dari memori lokal
+      _chartData = _runSession!.rawLrcData; 
     } else if (widget.runId != null) {
       await _loadDataFromId(widget.runId!);
       targetId = widget.runId;
     }
 
-    // Jika grafik masih kosong (misal data lama), baru kita fetch dari API sebagai cadangan
     if (targetId != null && _chartData.isEmpty) {
       await _fetchRawDataForChart(targetId);
     }
@@ -65,7 +64,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
 
     _runSession = run;
     _currentTitle = run.title;
-    _chartData = run.rawLrcData; // 🔥 Ambil data grafik
+    _chartData = run.rawLrcData; 
   }
 
   Future<void> _fetchRawDataForChart(String id) async {
@@ -79,28 +78,31 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
       final List<dynamic>? rawData = rawAny is List ? rawAny : null; 
       
       if (rawData != null && rawData.isNotEmpty) {
-        List<double> spmList = [];
+        List<LrcPoint> pointList = [];
         
         for (var row in rawData) {
           if (row is num) {
-            spmList.add(row.toDouble());
+            pointList.add(LrcPoint(y: row.toDouble(), pattern: '3:2'));
           } else if (row is Map) {
+            double yVal = 0.0;
             if (row['y'] is num) {
-              spmList.add((row['y'] as num).toDouble());
+              yVal = (row['y'] as num).toDouble();
             } else if (row['spm'] is num) {
-              spmList.add((row['spm'] as num).toDouble());
+              yVal = (row['spm'] as num).toDouble();
             }
+            String pattern = row['pattern']?.toString() ?? '3:2';
+            pointList.add(LrcPoint(y: yVal, pattern: pattern));
           }
         }
         
         if (mounted) {
           setState(() {
-            _chartData = spmList;
+            _chartData = pointList;
           });
         }
       }
     } catch (e) {
-      print('Gagal memuat grafik dari API: $e');
+      debugPrint('Gagal memuat grafik dari API: $e');
     }
   }
 
@@ -168,27 +170,21 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     final String? id = widget.runId ?? _runSession?.id;
     if (id == null) return;
 
-    // --- 1. UPDATE KE BACKEND SERVER ---
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String? token = prefs.getString('authToken');
-      
       if (token != null && token.isNotEmpty) {
         try {
           await ApiService.updateRunTitle(token, id, newTitle);
         } catch (e) {
-          print("Gagal update backend, tapi tetap mencoba update lokal: $e");
+          debugPrint("Gagal update backend: $e");
         }
       }
-    } catch (e) {
-      print("Error mengakses token: $e");
-    }
+    } catch (e) {}
 
-    // --- 2. UPDATE LOKAL ---
     await RunHistoryStorage.updateRunTitle(id, newTitle);
     
     if (!mounted) return;
-    
     setState(() {
       _currentTitle = newTitle;
       _runSession = _runSession?.copyWith(title: newTitle);
@@ -294,8 +290,14 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const SizedBox(height: 30),
             Row(
               children: [
-                _buildSummaryCard('LRC Rata-Rata', session?.avgLrc ?? '-', const Color(0xFFFFF1EB)),
+                // Swipeable LRC Card
+                Expanded(
+                  child: _SwipeableLrcCard(
+                    lrcData: session?.parsedAvgLrc ?? {'-': '-'}
+                  ),
+                ),
                 const SizedBox(width: 15),
+                // Card Kepatuhan
                 _buildSummaryCard('Kepatuhan', '$kepatuhanValue%', const Color(0xFFFFF1EB), valueColor: _getKepatuhanColor(kepatuhanValue)),
               ],
             ),
@@ -304,7 +306,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             const Divider(color: Color(0xFFF77226), thickness: 1.5),
             
             _buildDetailRow(Icons.track_changes, 'Target Pola', session?.targetPattern ?? '-'),
-            
             _buildDetailRow(Icons.access_time, 'Durasi', session?.duration ?? '00:00'),
             _buildDetailRow(Icons.timeline, 'SPM Rata-Rata', '${session?.avgSpm ?? 0}'),
             _buildDetailRow(Icons.percent_outlined, 'Tingkat Kepatuhan', '$kepatuhanValue%', isLast: true, customValueColor: _getKepatuhanColor(kepatuhanValue)),
@@ -314,16 +315,19 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     );
   }
 
+  // 🔥 PERBAIKAN: Mengatur tinggi dan padding card agar tidak overflow
   Widget _buildSummaryCard(String title, String value, Color bgColor, {Color valueColor = Colors.black}) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 20),
+        height: 100, // Menambah tinggi sedikit agar tidak sesak
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8), // Padding dikecilkan
         decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(20)),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(title, style: const TextStyle(color: Color(0xFFF77226), fontWeight: FontWeight.bold)),
-            const SizedBox(height: 10),
-            Text(value, style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: valueColor)),
+            Text(title, style: const TextStyle(color: Color(0xFFF77226), fontWeight: FontWeight.bold, fontSize: 12)),
+            const SizedBox(height: 8), // Jarak di perkecil sedikit
+            Text(value, style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: valueColor)),
           ],
         ),
       ),
@@ -334,18 +338,44 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 5),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
           child: Row(
             children: [
+              // 1. Icon Indikator
               Icon(icon, color: const Color(0xFFF77226), size: 22),
-              const SizedBox(width: 12),
-              Text(label, style: const TextStyle(color: Color(0xFFF77226), fontSize: 15)),
-              const Spacer(),
-              Text(value, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: customValueColor ?? Colors.black)),
+              const SizedBox(width: 14),
+              
+              // 2. Label Nama Variabel (Di-expand agar mengambil sisa ruang kiri)
+              Expanded(
+                flex: 2,
+                child: Text(
+                  label, 
+                  style: const TextStyle(
+                    color: Color(0xFFF77226), 
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500
+                  )
+                ),
+              ),
+              
+              // 3. Nilai Variabel (Rata Kanan Mutlak)
+              Expanded(
+                flex: 3,
+                child: Text(
+                  value, 
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 15, 
+                    color: customValueColor ?? Colors.black
+                  ),
+                  textAlign: TextAlign.right, // Mengunci rata kanan
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
             ],
           ),
         ),
-        if (!isLast) const Divider(color: Color(0xFFFFF1EB), thickness: 1, height: 1),
+        if (!isLast) const Divider(color: Color(0xFFFFF1EB), thickness: 1.2, height: 1),
       ],
     );
   }
@@ -355,9 +385,104 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   }
 }
 
+// ==========================================
+// KOMPONEN SWIPEABLE LRC CARD
+// ==========================================
+class _SwipeableLrcCard extends StatefulWidget {
+  final Map<String, String> lrcData;
+  const _SwipeableLrcCard({required this.lrcData});
+
+  @override
+  __SwipeableLrcCardState createState() => __SwipeableLrcCardState();
+}
+
+class __SwipeableLrcCardState extends State<_SwipeableLrcCard> {
+  final PageController _pageController = PageController();
+  int _currentIndex = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = widget.lrcData.entries.toList();
+    final bool isMulti = entries.length > 1;
+
+    return Container(
+      height: 100, // Disamakan dengan Summary Card di sebelahnya
+      padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8), // Padding dikecilkan
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1EB), 
+        borderRadius: BorderRadius.circular(20)
+      ),
+      child: isMulti 
+        ? Column(
+            children: [
+              Expanded(
+                child: PageView.builder(
+                  controller: _pageController,
+                  onPageChanged: (index) => setState(() => _currentIndex = index),
+                  itemCount: entries.length,
+                  itemBuilder: (context, index) {
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'LRC Rata-Rata (${entries[index].key})', 
+                          style: const TextStyle(color: Color(0xFFF77226), fontWeight: FontWeight.bold, fontSize: 11),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          entries[index].value, 
+                          style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.black)
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+              // Titik Indikator Swipe
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(entries.length, (index) => Container(
+                  margin: const EdgeInsets.only(bottom: 2, left: 3, right: 3),
+                  width: 6, height: 6,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _currentIndex == index ? const Color(0xFFF77226) : Colors.orange.shade200,
+                  )
+                )),
+              )
+            ],
+          )
+        : Column( // TAMPILAN NORMAL JIKA HANYA 1 POLA
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('LRC Rata-Rata', style: TextStyle(color: Color(0xFFF77226), fontWeight: FontWeight.bold, fontSize: 12)),
+              const SizedBox(height: 8),
+              Text(
+                entries.isNotEmpty ? entries.first.value : '-', 
+                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black)
+              ),
+            ],
+          ),
+    );
+  }
+}
+
+// ==========================================
+// CHART PAINTER MULTI-WARNA
+// ==========================================
 class ChartPainter extends CustomPainter {
-  final List<double> dataPoints;
+  final List<LrcPoint> dataPoints;
   const ChartPainter(this.dataPoints);
+
+  // Menentukan warna berdasarkan target pola
+  Color _getPatternColor(String pattern) {
+    if (pattern.contains('2:1')) return Colors.blue;
+    if (pattern.contains('2:2')) return Colors.green;
+    if (pattern.contains('4:4')) return Colors.purple;
+    if (pattern.contains('3:3')) return Colors.teal;
+    return const Color(0xFFF77226); // Default Oranye untuk 3:2 dan lainnya
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -369,25 +494,27 @@ class ChartPainter extends CustomPainter {
 
     if (dataPoints.isEmpty) return;
 
-    final Paint dataPaint = Paint()
-      ..color = const Color(0xFFF77226)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final Path path = Path();
     double minVal = 1.0; 
     double maxVal = 7.0; 
     double range = maxVal - minVal;
     double spacing = size.width / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
 
-    for (int i = 0; i < dataPoints.length; i++) {
-      double x = i * spacing;
-      double y = size.height - ((dataPoints[i] - minVal) / range * size.height);
-      if (i == 0) path.moveTo(x, y); else path.lineTo(x, y);
+    // Menggambar per ruas agar warna bisa berubah-ubah
+    for (int i = 1; i < dataPoints.length; i++) {
+      double x1 = (i - 1) * spacing;
+      double y1 = size.height - ((dataPoints[i - 1].y - minVal) / range * size.height);
+      
+      double x2 = i * spacing;
+      double y2 = size.height - ((dataPoints[i].y - minVal) / range * size.height);
+
+      final Paint segmentPaint = Paint()
+        ..color = _getPatternColor(dataPoints[i].pattern)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 3
+        ..strokeCap = StrokeCap.round;
+
+      canvas.drawLine(Offset(x1, y1), Offset(x2, y2), segmentPaint);
     }
-    canvas.drawPath(path, dataPaint);
   }
 
   @override

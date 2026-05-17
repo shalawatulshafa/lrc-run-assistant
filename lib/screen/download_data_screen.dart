@@ -85,8 +85,26 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
 
       // 3. Simpan setiap sesi ke dalam Memori HP
       for (var runItem in runsData) {
-        final summary = runItem['summary'];
-        final String runId = runItem['runId'].toString();
+        final summary = runItem['summary'] ?? runItem;
+        final String runId = (runItem['runId'] ?? runItem['id']).toString();
+
+        // 🔥 PERBAIKAN: Mengurai (parsing) grafik dari Backend menjadi LrcPoint
+        List<LrcPoint> parsedGraphData = [];
+        final rawGraphList = summary['rawLrcData'] ?? summary['graphData'];
+        
+        if (rawGraphList != null && rawGraphList is List) {
+          parsedGraphData = rawGraphList.map((e) {
+            if (e is num) {
+              return LrcPoint(
+                y: e.toDouble(), 
+                pattern: summary['targetPattern']?.toString() ?? '3:2'
+              );
+            } else if (e is Map) {
+              return LrcPoint.fromJson(Map<String, dynamic>.from(e));
+            }
+            return const LrcPoint(y: 0.0, pattern: '3:2');
+          }).toList();
+        }
 
         final RunSession newSession = RunSession(
           id: runId,
@@ -98,8 +116,8 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
           avgSpm: (summary['avgSpm'] as num?)?.toInt() ?? 0,
           compliance: (summary['compliance'] as num?)?.toInt() ?? 0,
           duration: summary['duration']?.toString() ?? '00:00',
-          // Parsing array grafik
-          rawLrcData: (summary['graphData'] as List?)?.map((e) => (e as num).toDouble()).toList() ?? [],
+          // 🔥 Memasukkan List<LrcPoint> yang sudah diurai di atas
+          rawLrcData: parsedGraphData, 
         );
 
         // Simpan ke SharedPreferences
