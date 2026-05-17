@@ -8,6 +8,7 @@ const parseCustomDate = (dateString) => {
         if (!dateString) return new Date();
         
         const parts = dateString.split(', ');
+        // Jika formatnya bukan yang diharapkan, coba fallback ke parser bawaan JavaScript
         if (parts.length !== 2) return new Date(dateString); 
 
         const datePart = parts[0]; 
@@ -19,20 +20,18 @@ const parseCustomDate = (dateString) => {
         if (dateSplit.length !== 3 || timeSplit.length !== 3) return new Date();
 
         const day = parseInt(dateSplit[0], 10);
-        // JS Date biasa menghitung bulan dari 0, tapi untuk string ISO kita pakai angka aslinya (1-12)
-        const month = parseInt(dateSplit[1], 10); 
+        const month = parseInt(dateSplit[1], 10) - 1; // JS menghitung bulan dari 0
         const year = parseInt(dateSplit[2], 10);
 
         const hour = parseInt(timeSplit[0], 10);
         const minute = parseInt(timeSplit[1], 10);
         const second = parseInt(timeSplit[2], 10);
 
-        // 🔥 PERBAIKAN: Format menjadi Standar ISO dengan zona waktu WIB (+07:00)
-        // Kita beritahu database bahwa waktu ini adalah murni waktu Indonesia (WIB)
-        const pad = (n) => n.toString().padStart(2, '0');
-        const isoString = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}+07:00`;
-        
-        const finalDate = new Date(isoString);
+        // 🔥 PERBAIKAN UTAMA:
+        // Kita paksa server Node.js untuk memahami bahwa waktu ini adalah WIB.
+        // Caranya dengan menggunakan Date.UTC dan mengurangi jamnya dengan 7 (hour - 7).
+        // Sehingga 15:29 WIB akan disimpan di Database murni sebagai 08:29 UTC.
+        const finalDate = new Date(Date.UTC(year, month, day, hour - 7, minute, second));
         
         // Pastikan hasilnya valid
         if (isNaN(finalDate.getTime())) return new Date();
@@ -92,7 +91,6 @@ export const syncRun = async (req, res, next) => {
         return fail(res, 'VALIDATION_ERROR', 'Data sensor diperlukan', 400);
     }
 
-    // 1. Analisis seluruh data yang dikirim (bisa berisi 1 atau 10 sesi sekaligus)
     const analyzedSessions = analyzeRunData(rawData);
 
     if (!analyzedSessions || analyzedSessions.length === 0) {
@@ -101,11 +99,10 @@ export const syncRun = async (req, res, next) => {
 
     const savedRuns = [];
 
-    // 2. Lakukan perulangan untuk menyimpan setiap sesi ke Database
+    // Lakukan perulangan untuk menyimpan setiap sesi ke Database
     for (const session of analyzedSessions) {
         const parsedDate = parseCustomDate(session.startDate);
 
-        // 🔥 PERBAIKAN: Cek apakah sesi dengan tanggal dan user ini sudah pernah diunduh
         const existingRun = await prisma.run.findFirst({
             where: {
                 userId: userId,
@@ -117,7 +114,7 @@ export const syncRun = async (req, res, next) => {
         let savedRun;
 
         if (existingRun) {
-            // Jika sudah ada (duplikat), timpa datanya agar riwayat tidak berlipat ganda
+            // Jika sudah ada, timpa datanya
             savedRun = await prisma.run.update({
                 where: { id: existingRun.id },
                 data: {
@@ -134,8 +131,8 @@ export const syncRun = async (req, res, next) => {
             savedRun = await prisma.run.create({
                 data: {
                     userId: userId,
-                    date: parsedDate,                      // Waktu asli dari alat ESP32
-                    sessionNumber: session.sessionNumber,  // Nomor urut sesi
+                    date: parsedDate,                      
+                    sessionNumber: session.sessionNumber,  
                     title: `Lari LRC Sesi ${session.sessionNumber}`, 
                     targetPattern: session.targetPattern, 
                     avgSpm: session.avgSpm,
@@ -153,7 +150,6 @@ export const syncRun = async (req, res, next) => {
         });
     }
 
-    // 3. Kembalikan semua data yang berhasil disinkronisasi ke Aplikasi HP
     return ok(res, { 
         message: `${savedRuns.length} sesi lari berhasil diunduh dan disimpan!`,
         runs: savedRuns 
