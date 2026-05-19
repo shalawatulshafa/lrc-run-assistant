@@ -302,11 +302,6 @@ Current screen code mostly uses local `SharedPreferences` directly instead of th
 ### `lib/utils/snackbar_helper.dart`
 Reusable snackbars for success/error/info/warning, so UI messages stay consistent.
 
-### `lib/helpers/run_title_helper.dart`
-Generates smarter run titles based on time of day, distance, avg SPM, and compliance.
-
-Current `download_data_screen.dart` still uses a simpler manual title, but this helper can be plugged in later.
-
 ### `lib/models/chest_strap_data.dart`
 Simple data model placeholder for chest strap sync metadata.
 

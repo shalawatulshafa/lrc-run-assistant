@@ -97,7 +97,7 @@ void _showLogoutConfirmDialog(BuildContext context) {
     }
   }
 
-  Future<void> _saveUserData(String name, String email) async {
+  Future<bool> _saveUserData(String name, String email) async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     final String? token = prefs.getString('authToken');
 
@@ -114,11 +114,13 @@ void _showLogoutConfirmDialog(BuildContext context) {
       await prefs.setString('userName', userName);
       await prefs.setString('userEmail', userEmail);
 
-      if (!mounted) return;
+      if (!mounted) return true;
       setState(() {});
+      return true;
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) return false;
       SnackbarHelper.showError(context, e.toString().replaceFirst('Exception: ', ''));
+      return false;
     }
   }
 
@@ -384,48 +386,76 @@ void _showLogoutConfirmDialog(BuildContext context) {
   void _showEditProfileDialog(BuildContext context, String currentName, String currentEmail) {
     final TextEditingController nameController = TextEditingController(text: currentName);
     final TextEditingController emailController = TextEditingController(text: currentEmail);
+    bool isSaving = false;
 
     showDialog(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Edit Profil'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  labelText: 'Nama',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                ),
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            return AlertDialog(
+              title: const Text('Edit Profil'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    enabled: !isSaving,
+                    decoration: InputDecoration(
+                      labelText: 'Nama',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: emailController,
+                    enabled: !isSaving,
+                    decoration: InputDecoration(
+                      labelText: 'Email',
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    keyboardType: TextInputType.emailAddress,
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                  child: const Text('Batal'),
                 ),
-                keyboardType: TextInputType.emailAddress,
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Batal'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                _saveUserData(nameController.text.trim(), emailController.text.trim());
-                Navigator.pop(context);
-                SnackbarHelper.showSuccess(context, 'Profil berhasil diperbarui');
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF77226)),
-              child: const Text('Simpan'),
-            ),
-          ],
+                ElevatedButton(
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          if (isSaving) return;
+                          setDialogState(() => isSaving = true);
+                          final bool success = await _saveUserData(
+                            nameController.text.trim(),
+                            emailController.text.trim(),
+                          );
+                          if (!dialogContext.mounted) return;
+                          if (success) {
+                            Navigator.pop(dialogContext);
+                            SnackbarHelper.showSuccess(context, 'Profil berhasil diperbarui');
+                          } else {
+                            setDialogState(() => isSaving = false);
+                          }
+                        },
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF77226)),
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          ),
+                        )
+                      : const Text('Simpan'),
+                ),
+              ],
+            );
+          },
         );
       },
     );
@@ -570,7 +600,7 @@ void _showLogoutConfirmDialog(BuildContext context) {
           final Map<String, dynamic> run = jsonDecode(data[i]);
           message += '${i + 1}. ${run['title']}\n';
           message += '   Date: ${run['date']}\n';
-          message += '   ${run['distance']} km | ${run['duration']}\n';
+          message += '   Target: ${run['targetPattern']} | SPM: ${run['avgSpm']} | ${run['duration']}\n';
           message += '   Kepatuhan: ${run['compliance']}%\n';
           message += '   ID: ${run['id']}\n\n';
         } catch (_) {

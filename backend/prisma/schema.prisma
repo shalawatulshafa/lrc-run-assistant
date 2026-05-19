@@ -23,12 +23,14 @@ model Run {
   userId         String
   user           User     @relation(fields: [userId], references: [id])
   title          String
-  targetPattern  String 
+  targetPattern  String
   avgLrc         String?
-  date           DateTime @default(now())   
-  sessionNumber  Int?     
-  duration       String   
+  date           DateTime @default(now())
+  sessionNumber  Int?
+  duration       String
   avgSpm         Int
   compliance     Int
   rawLrcData     Json?
+
+  @@unique([userId, date, sessionNumber])
 }

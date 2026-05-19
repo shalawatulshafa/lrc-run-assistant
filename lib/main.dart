@@ -1,6 +1,7 @@
 // main.dart
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart'; 
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screen/welcome_screen.dart';
 import 'screen/main_navigation.dart';
 import 'screen/settings_screen.dart';
@@ -9,6 +10,11 @@ import 'screen/register_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Kunci orientasi ke portrait-up saja (tidak termasuk upside-down)
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
 
   final SharedPreferences prefs = await SharedPreferences.getInstance();
   final bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;

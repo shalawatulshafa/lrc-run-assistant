@@ -28,9 +28,10 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
 
   List<ScanResult> _scanResults = [];
   StreamSubscription<List<ScanResult>>? _scanSubscription;
-  
+
   bool _isScanning = false;
   bool _isConnecting = false; // Menandakan user sedang mencoba connect ke 1 perangkat
+  String? _scanError; // Pesan error scan untuk ditampilkan di empty state
 
   @override
   void initState() {
@@ -53,24 +54,41 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
     setState(() {
       _isScanning = true;
       _scanResults.clear();
+      _scanError = null;
     });
 
     try {
       if (Platform.isAndroid) {
-        Map<Permission, PermissionStatus> statuses = await [
+        final Map<Permission, PermissionStatus> statuses = await [
           Permission.bluetoothScan,
           Permission.bluetoothConnect,
           Permission.location,
         ].request();
 
-        if (statuses[Permission.bluetoothScan] != PermissionStatus.granted ||
-            statuses[Permission.bluetoothConnect] != PermissionStatus.granted) {
-          throw Exception("Izin Bluetooth ditolak oleh pengguna.");
+        // Cek BT permissions saja sebagai fatal — location di-request untuk
+        // Android <12, tapi di Android 12+ manifest pakai neverForLocation
+        // sehingga tidak strictly required untuk BLE scan.
+        final btScan = statuses[Permission.bluetoothScan];
+        final btConnect = statuses[Permission.bluetoothConnect];
+
+        final permanentlyDenied = (btScan?.isPermanentlyDenied ?? false) ||
+            (btConnect?.isPermanentlyDenied ?? false);
+        final denied = !(btScan?.isGranted ?? false) ||
+            !(btConnect?.isGranted ?? false);
+
+        if (permanentlyDenied) {
+          if (mounted) await _showPermissionPermanentlyDeniedDialog();
+          return;
+        }
+        if (denied) {
+          if (mounted) await _showPermissionDeniedDialog();
+          return;
         }
       }
 
       if (await FlutterBluePlus.adapterState.first == BluetoothAdapterState.off) {
-        throw Exception("Bluetooth mati");
+        if (mounted) await _showBluetoothOffDialog();
+        return;
       }
 
       // Mulai scan selama 10 detik
@@ -80,7 +98,7 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
         if (mounted) {
           setState(() {
             // Filter hanya perangkat yang punya nama agar list tidak penuh dengan device acak
-            _scanResults = results.where((r) => 
+            _scanResults = results.where((r) =>
               r.device.platformName.isNotEmpty || r.device.advName.isNotEmpty
             ).toList();
           });
@@ -91,7 +109,12 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
       await Future.delayed(const Duration(seconds: 10));
 
     } catch (e) {
-      print("Error scanning: $e");
+      debugPrint("Error scanning: $e");
+      if (mounted) {
+        setState(() {
+          _scanError = 'Gagal memindai: ${e.toString().replaceFirst('Exception: ', '')}';
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -99,6 +122,79 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
         });
       }
     }
+  }
+
+  Future<void> _showPermissionDeniedDialog() async {
+    return showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Izin Bluetooth Diperlukan'),
+        content: const Text(
+          'Aplikasi memerlukan izin Bluetooth (dan Lokasi pada Android lama) '
+          'untuk memindai perangkat ESP32. Tolong izinkan saat ditanya.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF77226)),
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              _startScan();
+            },
+            child: const Text('Coba Lagi', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showPermissionPermanentlyDeniedDialog() async {
+    return showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Izin Bluetooth Diperlukan'),
+        content: const Text(
+          'Izin Bluetooth ditolak permanen. Buka Pengaturan aplikasi untuk '
+          'mengaktifkan izin Bluetooth secara manual, lalu kembali ke aplikasi.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF77226)),
+            onPressed: () async {
+              Navigator.pop(dialogContext);
+              await openAppSettings();
+            },
+            child: const Text('Buka Pengaturan', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showBluetoothOffDialog() async {
+    return showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Bluetooth Tidak Aktif'),
+        content: const Text(
+          'Aktifkan Bluetooth di pengaturan HP dulu, lalu tap tombol refresh.',
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFF77226)),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('OK', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
   }
 
   // 🔥 PERBAIKAN: Fungsi penyuap waktu dengan Jeda dan Response yang benar
@@ -264,11 +360,15 @@ class _ConnectingScreenState extends State<ConnectingScreen> with SingleTickerPr
   // Tampilan 1: Daftar Perangkat (Mode Manual)
   Widget _buildDeviceList() {
     if (_scanResults.isEmpty && !_isScanning) {
-      return const Center(
-        child: Text(
-          "Tidak ada perangkat Bluetooth ditemukan.\nPastikan ESP32 menyala dan dekat.",
-          textAlign: TextAlign.center,
-          style: TextStyle(color: Colors.grey),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Text(
+            _scanError ??
+                "Tidak ada perangkat Bluetooth ditemukan.\nPastikan ESP32 menyala dan dekat.",
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.grey),
+          ),
         ),
       );
     }

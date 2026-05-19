@@ -31,10 +31,11 @@ class DashboardRunners extends StatefulWidget {
 }
 
 class DashboardRunnersState extends State<DashboardRunners> {
-  int batteryLevel = 0; 
+  int batteryLevel = 0;
   RunSession? _latestRunData;
-  bool _isLoadingLatest = false;
+  bool _isLoadingLatest = true;
   bool _hasNewData = false;
+  bool _isDownloading = false;
 
   StreamSubscription<List<int>>? _batterySubscription;
   StreamSubscription<BluetoothConnectionState>? _connectionSubscription;
@@ -163,7 +164,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
   Future<void> _loadLatestRunData() async {
       if (_latestRunData == null) {
         setState(() {
-          _isLoadingLatest = false;
+          _isLoadingLatest = true;
         });
       }
 
@@ -173,7 +174,7 @@ class DashboardRunnersState extends State<DashboardRunners> {
         if (mounted) {
           setState(() {
             _latestRunData = runs.isNotEmpty ? runs.first : null;
-            _isLoadingLatest = false; 
+            _isLoadingLatest = false;
           });
         }
       } catch (e) {
@@ -218,20 +219,20 @@ class DashboardRunnersState extends State<DashboardRunners> {
         elevation: 0,
         titleSpacing: 0,
         toolbarHeight: 60,
-        title: const Padding(
-          padding: EdgeInsets.only(left: 24, top: 16, bottom: 8),
+        title: Padding(
+          padding: const EdgeInsets.only(left: 24, top: 16, bottom: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Selamat Pagi,',
-                style: TextStyle(
+                '${_getGreeting()},',
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,
                   color: Color.fromARGB(255, 165, 165, 165),
                 ),
               ),
-              Text(
+              const Text(
                 'Runners',
                 style: TextStyle(
                   fontSize: 20,
@@ -348,43 +349,52 @@ class DashboardRunnersState extends State<DashboardRunners> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: canDownload
+                  onPressed: (canDownload && !_isDownloading)
                       ? () async {
-                          final prefs = await SharedPreferences.getInstance();
-                          final String jwtToken = prefs.getString('authToken') ?? '';
+                          // Race guard: kalau handler sudah fire dari tap sebelumnya
+                          // (same-frame double-tap), bail out sebelum setState
+                          if (_isDownloading) return;
+                          setState(() => _isDownloading = true);
 
-                          if (jwtToken.isEmpty) {
+                          try {
+                            final prefs = await SharedPreferences.getInstance();
+                            final String jwtToken = prefs.getString('authToken') ?? '';
+
+                            if (jwtToken.isEmpty) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Sesi login tidak valid, harap login ulang.')),
+                              );
+                              return;
+                            }
+
+                            if (widget.connectedDevice == null) {
+                              if (!context.mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Perangkat tidak ditemukan.')),
+                              );
+                              return;
+                            }
+
                             if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Sesi login tidak valid, harap login ulang.')),
-                            );
-                            return;
-                          }
 
-                          if (widget.connectedDevice == null) {
-                            if (!context.mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Perangkat tidak ditemukan.')),
-                            );
-                            return;
-                          }
-
-                          if (!context.mounted) return;
-
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => DownloadDataScreen(
-                                onDataDownloaded: markDataDownloaded,
-                                connectedDevice: widget.connectedDevice!, 
-                                jwtToken: jwtToken,                       
+                            final result = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => DownloadDataScreen(
+                                  onDataDownloaded: markDataDownloaded,
+                                  connectedDevice: widget.connectedDevice!,
+                                  jwtToken: jwtToken,
+                                ),
                               ),
-                            ),
-                          );
+                            );
 
-                          if (result == true) {
-                            await _loadLatestRunData();
-                            widget.onDataSaved?.call();
+                            if (result == true) {
+                              await _loadLatestRunData();
+                              widget.onDataSaved?.call();
+                            }
+                          } finally {
+                            if (mounted) setState(() => _isDownloading = false);
                           }
                         }
                       : null,
@@ -611,8 +621,16 @@ class DashboardRunnersState extends State<DashboardRunners> {
     );
   }
 
+  String _getGreeting() {
+    final int hour = DateTime.now().hour;
+    if (hour >= 4 && hour < 11) return 'Selamat Pagi';
+    if (hour >= 11 && hour < 15) return 'Selamat Siang';
+    if (hour >= 15 && hour < 18) return 'Selamat Sore';
+    return 'Selamat Malam';
+  }
+
   String _formatDate(DateTime dateTime) {
-    final DateTime localTime = dateTime.toLocal(); 
+    final DateTime localTime = dateTime.toLocal();
     return '${localTime.day} ${_getMonthName(localTime.month)} ${localTime.year}, ${localTime.hour.toString().padLeft(2, '0')}:${localTime.minute.toString().padLeft(2, '0')}';
   }
 

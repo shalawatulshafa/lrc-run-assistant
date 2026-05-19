@@ -21,12 +21,6 @@ class HistoryScreenState extends State<HistoryScreen> {
     _loadHistoryData();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadHistoryData();
-  }
-
   void refreshData() {
     _loadHistoryData(fromServer: false);
   }
@@ -234,21 +228,16 @@ class HistoryScreenState extends State<HistoryScreen> {
     final String lastLrc = _getLastLrcValue(data);
 
     return GestureDetector(
-      onTap: () async { 
-        await Navigator.push(
+      onTap: () {
+        Navigator.push(
           context,
           MaterialPageRoute(
             builder: (context) => DetailLariScreen(
               runSession: data,
-              onDataUpdated: () {
-                refreshData(); 
-              },
+              onDataUpdated: refreshData,
             ),
           ),
         );
-        
-        // Panggil refreshData() setelah kembali dari layar Detail
-        refreshData(); 
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 15),

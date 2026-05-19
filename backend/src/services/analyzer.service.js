@@ -28,8 +28,9 @@ export const analyzeRunData = (rawData) => {
                 currentPhase: null, 
                 currentInhaleSteps: 0,
                 currentExhaleSteps: 0,
+                cycleStartPatternId: null, // 🔥 PERBAIKAN: Mengunci target pola pada awal napas
                 cycles: [],
-                targetPatternsUsed: new Set() // Melacak pola apa saja yang dipakai di sesi ini
+                targetPatternsUsed: new Set() 
             };
         }
 
@@ -48,12 +49,16 @@ export const analyzeRunData = (rawData) => {
                     session.cycles.push({
                         in: session.currentInhaleSteps,
                         ex: session.currentExhaleSteps,
-                        // 🔥 SIMPAN POLA TARGET AKTIF PADA SIKLUS INI
-                        activeTargetPatternId: patternID 
+                        // Gunakan pola yang terkunci saat tarikan napas pertama dimulai
+                        activeTargetPatternId: session.cycleStartPatternId !== null ? session.cycleStartPatternId : patternID 
                     });
                 }
                 session.currentInhaleSteps = 0;
                 session.currentExhaleSteps = 0;
+                session.cycleStartPatternId = patternID; // Mulai siklus baru, kunci pola saat ini
+            } else if (session.currentPhase === null) {
+                // Untuk tarikan napas paling pertama kali
+                session.cycleStartPatternId = patternID;
             }
             session.currentPhase = 'IN';
         } 
@@ -103,14 +108,19 @@ export const analyzeRunData = (rawData) => {
         let totalCycles = 0;
         let graphDataPoints = [];
         
-        // 🔥 VARIABEL KANTONG UNTUK MENGHITUNG RATA-RATA BERDASARKAN POLA
         const averagesMap = {}; 
+        
+        // 🔥 PERBAIKAN: Inisialisasi awal ke-0 agar pola yang disentuh sebentar (0 siklus) tidak bikin Crash
+        session.targetPatternsUsed.forEach(id => {
+            const targetPatternStr = convertPatternId(id);
+            averagesMap[targetPatternStr] = { inSum: 0, exSum: 0, count: 0 };
+        });
 
         session.cycles.forEach(cycle => {
             const actualPattern = detectActualPattern(cycle.in, cycle.ex);
             const targetPatternStr = convertPatternId(cycle.activeTargetPatternId);
 
-            // 1. Hitung Kepatuhan Dinamis (Dicocokkan dengan pola target SAAT ITU)
+            // 1. Hitung Kepatuhan Dinamis
             if (actualPattern === targetPatternStr || 
                (targetPatternStr === "3:2" && cycle.in === 3 && cycle.ex === 2) ||
                (targetPatternStr === "2:1" && cycle.in === 2 && cycle.ex === 1)) {
@@ -118,7 +128,7 @@ export const analyzeRunData = (rawData) => {
             }
             totalCycles++;
 
-            // 2. Kumpulkan langkah untuk dihitung rata-ratanya (Dipisah per pola)
+            // 2. Kumpulkan langkah ke keranjang pola secara Global (semua 3:2 ngumpul di 3:2)
             if (!averagesMap[targetPatternStr]) {
                 averagesMap[targetPatternStr] = { inSum: 0, exSum: 0, count: 0 };
             }
@@ -126,7 +136,7 @@ export const analyzeRunData = (rawData) => {
             averagesMap[targetPatternStr].exSum += cycle.ex;
             averagesMap[targetPatternStr].count++;
 
-            // 3. Persiapkan Data Grafik (Kini disisipkan atribut 'pattern' untuk warna)
+            // 3. Persiapkan Data Grafik
             graphDataPoints.push({
                 y: mapPatternToY(actualPattern),
                 targetPattern: targetPatternStr
@@ -137,17 +147,22 @@ export const analyzeRunData = (rawData) => {
             ? Math.round((matchCount / totalCycles) * 100) 
             : 0;
 
-        // 🔥 UBAH RATA-RATA MENJADI STRING JSON UNTUK DISIMPAN DI PRISMA
+        // 🔥 UBAH RATA-RATA MENJADI STRING JSON 
         const finalAvgLrcObj = {};
         for (const [patt, stats] of Object.entries(averagesMap)) {
-            const avgIn = (stats.inSum / stats.count).toFixed(1);
-            const avgEx = (stats.exSum / stats.count).toFixed(1);
-            finalAvgLrcObj[patt] = `${avgIn} : ${avgEx}`;
+            // Cek jika count = 0, beri default 0.0 : 0.0 untuk mencegah error pembagian (NaN)
+            if (stats.count > 0) {
+                const avgIn = (stats.inSum / stats.count).toFixed(1);
+                const avgEx = (stats.exSum / stats.count).toFixed(1);
+                finalAvgLrcObj[patt] = `${avgIn} : ${avgEx}`;
+            } else {
+                finalAvgLrcObj[patt] = "0.0 : 0.0";
+            }
         }
-        // Contoh Output: '{"3:2": "3.1 : 2.0", "2:1": "2.0 : 1.1"}'
+        
         const avgLrcJsonString = JSON.stringify(finalAvgLrcObj); 
 
-        // Smoothing Grafik (Rata-rata pergeseran agar tidak tajam), tapi tetap simpan atribut pattern-nya
+        // Smoothing Grafik 
         let finalGraphData = [];
         for (let i = 0; i < graphDataPoints.length; i++) {
             let sumY = 0;
@@ -158,11 +173,11 @@ export const analyzeRunData = (rawData) => {
             }
             finalGraphData.push({
                 y: parseFloat((sumY / count).toFixed(2)),
-                pattern: graphDataPoints[i].targetPattern // Simpan identitas pola target di titik ini
+                pattern: graphDataPoints[i].targetPattern 
             });
         }
 
-        // Tentukan Judul Pola Sesi (Misal: Jika pakai 2 pola, akan jadi "3:2 & 2:1")
+        // Output UI Tetap 2 Nama saja walau dilompat-lompat berkali-kali (Misal: 3:2 & 2:1)
         const patternsArray = Array.from(session.targetPatternsUsed).map(id => convertPatternId(id));
         const sessionTargetPatternStr = patternsArray.join(" & ");
 
@@ -173,8 +188,8 @@ export const analyzeRunData = (rawData) => {
             duration: formattedDuration,
             avgSpm: session.spmCount > 0 ? Math.round(session.spmSum / session.spmCount) : 0,
             compliance: compliance,
-            avgLrc: avgLrcJsonString, // Data sudah aman sebagai String Json
-            rawLrcData: finalGraphData // Data sudah berupa array Objek dengan properti 'pattern'
+            avgLrc: avgLrcJsonString, 
+            rawLrcData: finalGraphData 
         });
     }
 
