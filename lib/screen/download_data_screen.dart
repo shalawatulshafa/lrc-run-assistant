@@ -117,7 +117,8 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
           compliance: (summary['compliance'] as num?)?.toInt() ?? 0,
           duration: summary['duration']?.toString() ?? '00:00',
           // 🔥 Memasukkan List<LrcPoint> yang sudah diurai di atas
-          rawLrcData: parsedGraphData, 
+          rawLrcData: parsedGraphData,
+          rawCsv: summary['rawCsv']?.toString(),
         );
 
         // Simpan ke SharedPreferences

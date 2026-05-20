@@ -25,16 +25,18 @@ export const analyzeRunData = (rawData) => {
                 spmCount: 0,
                 startTime: timestamp,
                 endTime: timestamp,
-                currentPhase: null, 
+                currentPhase: null,
                 currentInhaleSteps: 0,
                 currentExhaleSteps: 0,
                 cycleStartPatternId: null, // 🔥 PERBAIKAN: Mengunci target pola pada awal napas
                 cycles: [],
-                targetPatternsUsed: new Set() 
+                targetPatternsUsed: new Set(),
+                rawLines: [] // Kumpulan baris CSV asli per sesi, untuk ekspor download
             };
         }
 
         const session = sessionsMap[sessionId];
+        session.rawLines.push(line); // Simpan baris asli — tidak mempengaruhi parsing
         session.endTime = Math.max(session.endTime, timestamp);
         session.targetPatternsUsed.add(patternID); // Daftarkan pola yang aktif
 
@@ -181,15 +183,23 @@ export const analyzeRunData = (rawData) => {
         const patternsArray = Array.from(session.targetPatternsUsed).map(id => convertPatternId(id));
         const sessionTargetPatternStr = patternsArray.join(" & ");
 
+        // Rakit raw CSV per sesi: header + baris asli yang dikumpulkan saat parsing.
+        // Header memudahkan dibuka di Excel/Sheets tanpa hilang konteks kolom.
+        const CSV_HEADER = 'sessionId,date,time,timestamp_ms,breathPhase,step,spm,patternId';
+        const rawCsvForSession = session.rawLines.length > 0
+            ? `${CSV_HEADER}\n${session.rawLines.join('\n')}`
+            : null;
+
         analyzedSessions.push({
             sessionNumber: parseInt(sessionId),
-            startDate: session.startDate, 
+            startDate: session.startDate,
             targetPattern: sessionTargetPatternStr,
             duration: formattedDuration,
             avgSpm: session.spmCount > 0 ? Math.round(session.spmSum / session.spmCount) : 0,
             compliance: compliance,
-            avgLrc: avgLrcJsonString, 
-            rawLrcData: finalGraphData 
+            avgLrc: avgLrcJsonString,
+            rawLrcData: finalGraphData,
+            rawCsv: rawCsvForSession,
         });
     }
 

@@ -1,9 +1,12 @@
-﻿import 'package:flutter/material.dart';
-import 'dart:math'; 
+﻿import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
-import '../services/api_service.dart'; 
-import 'package:shared_preferences/shared_preferences.dart';
+import '../services/api_service.dart';
+import '../utils/snackbar_helper.dart';
 
 class DetailLariScreen extends StatefulWidget {
   final RunSession? runSession;
@@ -25,8 +28,9 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   String _currentTitle = 'Sesi Lari';
   RunSession? _runSession;
   
-  bool _isLoading = true; 
-  List<LrcPoint> _chartData = []; 
+  bool _isLoading = true;
+  bool _isExporting = false;
+  List<LrcPoint> _chartData = [];
 
   @override
   void initState() {
@@ -309,10 +313,84 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             _buildDetailRow(Icons.access_time, 'Durasi', session?.duration ?? '00:00'),
             _buildDetailRow(Icons.timeline, 'SPM Rata-Rata', '${session?.avgSpm ?? 0}'),
             _buildDetailRow(Icons.percent_outlined, 'Tingkat Kepatuhan', '$kepatuhanValue%', isLast: true, customValueColor: _getKepatuhanColor(kepatuhanValue)),
+
+            const SizedBox(height: 24),
+            _buildExportButton(session),
+            const SizedBox(height: 8),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildExportButton(RunSession? session) {
+    final bool hasCsv = session?.rawCsv != null && session!.rawCsv!.isNotEmpty;
+    final bool enabled = hasCsv && !_isExporting;
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: enabled ? () => _exportCsv(session) : null,
+        icon: _isExporting
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : Icon(
+                Icons.file_download_outlined,
+                color: enabled ? Colors.white : Colors.grey.shade600,
+              ),
+        label: Text(
+          hasCsv ? 'Ekspor CSV' : 'CSV tidak tersedia',
+          style: TextStyle(
+            color: enabled ? Colors.white : Colors.grey.shade600,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: enabled ? const Color(0xFFF77226) : Colors.grey.shade300,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _exportCsv(RunSession? session) async {
+    if (session == null || session.rawCsv == null || session.rawCsv!.isEmpty) return;
+    if (_isExporting) return;
+
+    setState(() => _isExporting = true);
+    try {
+      final Directory tempDir = await getTemporaryDirectory();
+      final String safeTitle = session.title
+          .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_');
+      final DateTime d = session.date.toLocal();
+      final String dateStamp =
+          '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
+      final String fileName = 'lrc_${safeTitle}_$dateStamp.csv';
+      final File file = File('${tempDir.path}/$fileName');
+      await file.writeAsString(session.rawCsv!);
+
+      await Share.shareXFiles(
+        [XFile(file.path, mimeType: 'text/csv')],
+        subject: 'Data Lari LRC: ${session.title}',
+        text: 'Raw CSV ${session.title} (${session.duration})',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      SnackbarHelper.showError(
+        context,
+        'Gagal mengekspor CSV: ${e.toString().replaceFirst('Exception: ', '')}',
+      );
+    } finally {
+      if (mounted) setState(() => _isExporting = false);
+    }
   }
 
   // 🔥 PERBAIKAN: Mengatur tinggi dan padding card agar tidak overflow

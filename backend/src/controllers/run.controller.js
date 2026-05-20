@@ -151,6 +151,7 @@ export const syncRun = async (req, res, next) => {
                 duration: session.duration,
                 rawLrcData: session.rawLrcData,
                 avgLrc: session.avgLrc,
+                rawCsv: session.rawCsv,
             },
             create: {
                 userId: userId,
@@ -163,6 +164,7 @@ export const syncRun = async (req, res, next) => {
                 duration: session.duration,
                 rawLrcData: session.rawLrcData,
                 avgLrc: session.avgLrc,
+                rawCsv: session.rawCsv,
             },
         });
 

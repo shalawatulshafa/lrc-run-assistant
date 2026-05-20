@@ -24,25 +24,27 @@ class RunSession {
   final String id;
   final String title;
   final DateTime date;
-  final int? sessionNumber; 
+  final int? sessionNumber;
   final String targetPattern;
   final String avgLrc;
   final int avgSpm;
   final int compliance;
   final String duration;
   final List<LrcPoint> rawLrcData;
+  final String? rawCsv;
 
   const RunSession({
     required this.id,
     required this.title,
     required this.date,
-    this.sessionNumber, 
+    this.sessionNumber,
     required this.targetPattern,
     required this.avgLrc,
     required this.avgSpm,
     required this.compliance,
     required this.duration,
     this.rawLrcData = const [],
+    this.rawCsv,
   });
 
   // 🔥 PERBAIKAN: Menambahkan fungsi copyWith untuk edit judul dll
@@ -57,6 +59,7 @@ class RunSession {
     int? compliance,
     String? duration,
     List<LrcPoint>? rawLrcData,
+    String? rawCsv,
   }) {
     return RunSession(
       id: id ?? this.id,
@@ -69,6 +72,7 @@ class RunSession {
       compliance: compliance ?? this.compliance,
       duration: duration ?? this.duration,
       rawLrcData: rawLrcData ?? this.rawLrcData,
+      rawCsv: rawCsv ?? this.rawCsv,
     );
   }
 
@@ -118,6 +122,7 @@ class RunSession {
       compliance: int.tryParse(json['compliance']?.toString() ?? '0') ?? 0,
       duration: json['duration']?.toString() ?? '00:00',
       rawLrcData: parsedGraphData,
+      rawCsv: json['rawCsv']?.toString(),
     );
   }
 
@@ -132,7 +137,8 @@ class RunSession {
       'avgSpm': avgSpm,
       'compliance': compliance,
       'duration': duration,
-      'rawLrcData': rawLrcData.map((e) => e.toJson()).toList(), 
+      'rawLrcData': rawLrcData.map((e) => e.toJson()).toList(),
+      'rawCsv': rawCsv,
     };
   }
 
