@@ -100,6 +100,26 @@ class RunSyncService {
 
             try {
               final result = await _processAndUploadData(jwtToken);
+
+              // Kirim ack "OK" ke ESP32 — sinyal bahwa data sudah aman di server,
+              // ESP32 boleh hapus data lokal. Wajib dikirim SETELAH backend POST
+              // sukses agar tidak ada data loss kalau upload gagal.
+              //
+              // Failure non-fatal: kalau OK gagal terkirim, ESP32 keep data dan
+              // user bisa sync ulang. Backend pakai upsert berbasis
+              // (userId, date, sessionNumber) jadi tidak akan duplikat.
+              try {
+                // targetChar dijamin non-null di sini karena throw di null-check
+                // sebelumnya; bang operator menyatakan ini eksplisit pada analyzer
+                // yang tidak bisa promote across closure boundary.
+                await targetChar!
+                    .write(utf8.encode("OK"), withoutResponse: false)
+                    .timeout(const Duration(seconds: 3));
+                print("Sent OK ack to ESP32 — alat boleh hapus data sesi.");
+              } catch (ackError) {
+                print("Gagal mengirim OK ack ke ESP32 (non-fatal): $ackError");
+              }
+
               completeWithSuccess(result);
             } catch (e) {
               completeWithError(e);
