@@ -19,19 +19,24 @@ model User {
 }
 
 model Run {
-  id             String   @id @default(uuid())
-  userId         String
-  user           User     @relation(fields: [userId], references: [id])
-  title          String
-  targetPattern  String
-  avgLrc         String?
-  date           DateTime @default(now())
-  sessionNumber  Int?
-  duration       String
-  avgSpm         Int
-  compliance     Int
-  rawLrcData     Json?
-  rawCsv         String?
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id])
+  title             String
+  targetPattern     String
+  avgLrc            String?
+  date              DateTime @default(now())
+  sessionNumber     Int?
+  duration          String
+  avgSpm            Int
+  compliance        Int
+  rawLrcData        Json?
+  rawCsv            String?
+  // Metrik baru dari format CSV dengan step=0 transition rows.
+  // Null untuk data lari lama (sebelum firmware update yang emit step=0).
+  avgLag            Float?
+  phaseDrift        Float?
+  consistencyScore  Int?
 
   @@unique([userId, date, sessionNumber])
 }

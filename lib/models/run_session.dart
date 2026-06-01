@@ -32,6 +32,10 @@ class RunSession {
   final String duration;
   final List<LrcPoint> rawLrcData;
   final String? rawCsv;
+  // Metrik baru dari format CSV step-anchored (null untuk data lari lama)
+  final double? avgLag;
+  final double? phaseDrift;
+  final int? consistencyScore;
 
   const RunSession({
     required this.id,
@@ -45,6 +49,9 @@ class RunSession {
     required this.duration,
     this.rawLrcData = const [],
     this.rawCsv,
+    this.avgLag,
+    this.phaseDrift,
+    this.consistencyScore,
   });
 
   // 🔥 PERBAIKAN: Menambahkan fungsi copyWith untuk edit judul dll
@@ -60,6 +67,9 @@ class RunSession {
     String? duration,
     List<LrcPoint>? rawLrcData,
     String? rawCsv,
+    double? avgLag,
+    double? phaseDrift,
+    int? consistencyScore,
   }) {
     return RunSession(
       id: id ?? this.id,
@@ -73,6 +83,9 @@ class RunSession {
       duration: duration ?? this.duration,
       rawLrcData: rawLrcData ?? this.rawLrcData,
       rawCsv: rawCsv ?? this.rawCsv,
+      avgLag: avgLag ?? this.avgLag,
+      phaseDrift: phaseDrift ?? this.phaseDrift,
+      consistencyScore: consistencyScore ?? this.consistencyScore,
     );
   }
 
@@ -123,6 +136,9 @@ class RunSession {
       duration: json['duration']?.toString() ?? '00:00',
       rawLrcData: parsedGraphData,
       rawCsv: json['rawCsv']?.toString(),
+      avgLag: json['avgLag'] != null ? double.tryParse(json['avgLag'].toString()) : null,
+      phaseDrift: json['phaseDrift'] != null ? double.tryParse(json['phaseDrift'].toString()) : null,
+      consistencyScore: json['consistencyScore'] != null ? int.tryParse(json['consistencyScore'].toString()) : null,
     );
   }
 
@@ -139,6 +155,9 @@ class RunSession {
       'duration': duration,
       'rawLrcData': rawLrcData.map((e) => e.toJson()).toList(),
       'rawCsv': rawCsv,
+      'avgLag': avgLag,
+      'phaseDrift': phaseDrift,
+      'consistencyScore': consistencyScore,
     };
   }
 

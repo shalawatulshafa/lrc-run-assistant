@@ -314,11 +314,149 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
             _buildDetailRow(Icons.timeline, 'SPM Rata-Rata', '${session?.avgSpm ?? 0}'),
             _buildDetailRow(Icons.percent_outlined, 'Tingkat Kepatuhan', '$kepatuhanValue%', isLast: true, customValueColor: _getKepatuhanColor(kepatuhanValue)),
 
+            // Section Analisis Mendalam — hanya muncul kalau data lari pakai format baru
+            // (data lama tidak punya avgLag/phaseDrift/consistencyScore).
+            if (_hasAdvancedMetrics(session)) ...[
+              const SizedBox(height: 24),
+              _buildAdvancedAnalysisSection(session!),
+            ],
+
             const SizedBox(height: 24),
             _buildExportButton(session),
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+
+  bool _hasAdvancedMetrics(RunSession? session) {
+    if (session == null) return false;
+    return session.avgLag != null ||
+        session.phaseDrift != null ||
+        session.consistencyScore != null;
+  }
+
+  Widget _buildAdvancedAnalysisSection(RunSession session) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF8F4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFFFD9C2)),
+      ),
+      child: Theme(
+        // Override Theme agar ExpansionTile divider tidak tampil saat collapsed
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          leading: const Icon(Icons.analytics_outlined, color: Color(0xFFF77226)),
+          title: const Text(
+            'Analisis Mendalam',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Color(0xFFF77226),
+              fontSize: 15,
+            ),
+          ),
+          subtitle: const Text(
+            'Tap untuk lihat metrik napas detail',
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+          ),
+          iconColor: const Color(0xFFF77226),
+          collapsedIconColor: const Color(0xFFF77226),
+          children: [
+            if (session.avgLag != null)
+              _buildAdvancedRow(
+                icon: Icons.av_timer,
+                label: 'Avg Lag Napas',
+                value: '${session.avgLag!.toStringAsFixed(0)} ms',
+                hint: 'Rata-rata keterlambatan/kecepatan transisi napas',
+              ),
+            if (session.phaseDrift != null)
+              _buildAdvancedRow(
+                icon: session.phaseDrift! >= 0 ? Icons.trending_up : Icons.trending_down,
+                label: 'Phase Drift',
+                value: '${session.phaseDrift! >= 0 ? '+' : ''}${session.phaseDrift!.toStringAsFixed(1)} ms/cycle',
+                hint: session.phaseDrift! >= 0
+                    ? 'Napas makin tertinggal seiring waktu'
+                    : 'Napas makin tepat waktu seiring waktu',
+                valueColor: session.phaseDrift!.abs() < 5
+                    ? Colors.green
+                    : (session.phaseDrift!.abs() < 15 ? Colors.orange : Colors.red),
+              ),
+            if (session.consistencyScore != null)
+              _buildAdvancedRow(
+                icon: Icons.equalizer,
+                label: 'Konsistensi',
+                value: '${session.consistencyScore}/100',
+                hint: 'Seberapa stabil pola napas (lebih tinggi = lebih stabil)',
+                valueColor: _getConsistencyColor(session.consistencyScore!),
+                isLast: true,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getConsistencyColor(int score) {
+    if (score >= 80) return Colors.green;
+    if (score >= 60) return Colors.orange;
+    return Colors.red;
+  }
+
+  Widget _buildAdvancedRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required String hint,
+    Color? valueColor,
+    bool isLast = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(top: 12, bottom: isLast ? 0 : 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFFF77226), size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        label,
+                        style: const TextStyle(
+                          color: Color(0xFFF77226),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: valueColor ?? Colors.black,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  hint,
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

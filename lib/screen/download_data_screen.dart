@@ -119,6 +119,9 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
           // 🔥 Memasukkan List<LrcPoint> yang sudah diurai di atas
           rawLrcData: parsedGraphData,
           rawCsv: summary['rawCsv']?.toString(),
+          avgLag: (summary['avgLag'] as num?)?.toDouble(),
+          phaseDrift: (summary['phaseDrift'] as num?)?.toDouble(),
+          consistencyScore: (summary['consistencyScore'] as num?)?.toInt(),
         );
 
         // Simpan ke SharedPreferences

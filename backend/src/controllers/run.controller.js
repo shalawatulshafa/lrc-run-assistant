@@ -152,6 +152,9 @@ export const syncRun = async (req, res, next) => {
                 rawLrcData: session.rawLrcData,
                 avgLrc: session.avgLrc,
                 rawCsv: session.rawCsv,
+                avgLag: session.avgLag,
+                phaseDrift: session.phaseDrift,
+                consistencyScore: session.consistencyScore,
             },
             create: {
                 userId: userId,
@@ -165,6 +168,9 @@ export const syncRun = async (req, res, next) => {
                 rawLrcData: session.rawLrcData,
                 avgLrc: session.avgLrc,
                 rawCsv: session.rawCsv,
+                avgLag: session.avgLag,
+                phaseDrift: session.phaseDrift,
+                consistencyScore: session.consistencyScore,
             },
         });
 
