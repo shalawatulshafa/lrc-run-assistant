@@ -30,6 +30,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   
   bool _isLoading = true;
   bool _isExporting = false;
+  bool _showHistogram = false;
   List<LrcPoint> _chartData = [];
 
   @override
@@ -108,6 +109,165 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     } catch (e) {
       debugPrint('Gagal memuat grafik dari API: $e');
     }
+  }
+
+  // === Toggle Garis ↔ Bar (next to "Grafik LRC" header) ===
+  Widget _buildChartModeToggle() {
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1EB),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _toggleIconButton(
+            icon: Icons.show_chart,
+            isActive: !_showHistogram,
+            onTap: () => setState(() => _showHistogram = false),
+            tooltip: 'Grafik Garis',
+          ),
+          _toggleIconButton(
+            icon: Icons.bar_chart,
+            isActive: _showHistogram,
+            onTap: () => setState(() => _showHistogram = true),
+            tooltip: 'Grafik Frekuensi Pola',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleIconButton({
+    required IconData icon,
+    required bool isActive,
+    required VoidCallback onTap,
+    required String tooltip,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFFF77226) : Colors.transparent,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            icon,
+            size: 18,
+            color: isActive ? Colors.white : const Color(0xFFF77226),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // === Line chart (existing time-series) — di-extract jadi method ===
+  Widget _buildLineChart(String? durationStr) {
+    return Row(
+      children: [
+        SizedBox(
+          height: 180,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: const [
+              Text('4:4', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('4:3', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('3:3', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('3:2', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('2:2', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('2:1', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('1:1', style: TextStyle(fontSize: 10, color: Colors.grey)),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 800,
+                  height: 180,
+                  decoration: BoxDecoration(
+                    border: Border(
+                      left: BorderSide(color: Colors.grey.shade300),
+                      bottom: BorderSide(color: Colors.grey.shade300),
+                    ),
+                  ),
+                  child: CustomPaint(size: const Size(800, 180), painter: ChartPainter(_chartData)),
+                ),
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: 800,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: _buildDynamicTimeLabels(durationStr),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  // === Histogram chart: pola yang terdeteksi + frekuensi-nya ===
+  Widget _buildHistogramChart() {
+    final List<HistogramBar> bars = _computeHistogramData();
+
+    if (bars.isEmpty) {
+      return Container(
+        height: 220,
+        alignment: Alignment.center,
+        child: Text(
+          'Tidak ada pola signifikan untuk ditampilkan',
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+        ),
+      );
+    }
+
+    return SizedBox(
+      height: 220,
+      child: CustomPaint(
+        size: const Size(double.infinity, 220),
+        painter: HistogramPainter(bars),
+      ),
+    );
+  }
+
+  // Group _chartData by actualPattern → filter low-frequency → sort desc.
+  // Filter rule: hide kalau frequency <5% DAN <2 absolute count.
+  List<HistogramBar> _computeHistogramData() {
+    if (_chartData.isEmpty) return [];
+
+    final Map<String, int> counts = {};
+    for (final point in _chartData) {
+      // Fallback ke target pattern kalau actualPattern null (data lama)
+      final key = (point.actualPattern != null && point.actualPattern!.isNotEmpty)
+          ? point.actualPattern!
+          : point.pattern;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+
+    final int total = _chartData.length;
+    final List<HistogramBar> bars = [];
+    counts.forEach((pattern, count) {
+      final double pct = count / total * 100;
+      // Filter: <5% AND <2 cycles
+      if (count < 2 && pct < 5) return;
+      bars.add(HistogramBar(pattern: pattern, count: count, percentage: pct));
+    });
+
+    bars.sort((a, b) => b.count.compareTo(a.count));
+    return bars;
   }
 
   List<Widget> _buildDynamicTimeLabels(String? durationStr) {
@@ -240,57 +400,22 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Grafik LRC', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
-            const SizedBox(height: 20),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                SizedBox(
-                  height: 180,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: const [
-                      Text('4:4', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text('4:3', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text('3:3', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text('3:2', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text('2:2', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text('2:1', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                      Text('1:1', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                    ],
-                  ),
+                const Text(
+                  'Grafik LRC',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 800,
-                          height: 180,
-                          decoration: BoxDecoration(
-                            border: Border(
-                              left: BorderSide(color: Colors.grey.shade300),
-                              bottom: BorderSide(color: Colors.grey.shade300),
-                            ),
-                          ),
-                          child: CustomPaint(size: const Size(800, 180), painter: ChartPainter(_chartData)), 
-                        ),
-                        const SizedBox(height: 10),
-                        SizedBox(
-                          width: 800,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: _buildDynamicTimeLabels(session?.duration),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                _buildChartModeToggle(),
               ],
             ),
+            const SizedBox(height: 20),
+            if (_showHistogram)
+              _buildHistogramChart()
+            else
+              _buildLineChart(session?.duration),
             const SizedBox(height: 30),
             Row(
               children: [
@@ -735,4 +860,138 @@ class ChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(ChartPainter oldDelegate) => oldDelegate.dataPoints != dataPoints;
+}
+
+// ==========================================
+// HISTOGRAM BAR DATA + PAINTER
+// (frekuensi pola yang terdeteksi)
+// ==========================================
+class HistogramBar {
+  final String pattern;
+  final int count;
+  final double percentage;
+
+  const HistogramBar({
+    required this.pattern,
+    required this.count,
+    required this.percentage,
+  });
+}
+
+class HistogramPainter extends CustomPainter {
+  final List<HistogramBar> bars;
+  const HistogramPainter(this.bars);
+
+  // Warna sama dengan ChartPainter agar konsisten antar mode
+  Color _getPatternColor(String pattern) {
+    if (pattern.contains('2:1')) return Colors.blue;
+    if (pattern.contains('2:2')) return Colors.green;
+    if (pattern.contains('4:4')) return Colors.purple;
+    if (pattern.contains('3:3')) return Colors.teal;
+    return const Color(0xFFF77226); // Default oranye untuk 3:2 dan pola lain
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (bars.isEmpty) return;
+
+    const double leftPad = 12;
+    const double rightPad = 12;
+    const double topPad = 30; // ruang untuk label % di atas bar
+    const double bottomPad = 44; // ruang untuk pola + count di bawah bar
+    const double barGap = 14; // spasi antar bar
+
+    final double chartWidth = size.width - leftPad - rightPad;
+    final double chartHeight = size.height - topPad - bottomPad;
+
+    // Skala vertikal: pakai max percentage agar bar terbesar memenuhi tinggi
+    double maxPct = 0;
+    for (final b in bars) {
+      if (b.percentage > maxPct) maxPct = b.percentage;
+    }
+    if (maxPct <= 0) maxPct = 100; // safety
+
+    final int n = bars.length;
+    final double totalGapWidth = barGap * (n - 1);
+    final double barWidth = (chartWidth - totalGapWidth) / n;
+
+    for (int i = 0; i < n; i++) {
+      final HistogramBar bar = bars[i];
+      final double barHeight = (bar.percentage / maxPct) * chartHeight;
+      final double barLeft = leftPad + i * (barWidth + barGap);
+      final double barTop = topPad + (chartHeight - barHeight);
+
+      // Bar dengan rounded corner di atas
+      final Paint paint = Paint()..color = _getPatternColor(bar.pattern);
+      canvas.drawRRect(
+        RRect.fromRectAndCorners(
+          Rect.fromLTWH(barLeft, barTop, barWidth, barHeight),
+          topLeft: const Radius.circular(6),
+          topRight: const Radius.circular(6),
+        ),
+        paint,
+      );
+
+      // Label % di atas bar
+      _paintCenteredText(
+        canvas,
+        text: '${bar.percentage.toStringAsFixed(0)}%',
+        x: barLeft,
+        y: barTop - 18,
+        width: barWidth,
+        style: const TextStyle(
+          color: Colors.black87,
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      );
+
+      // Label pola di bawah bar
+      _paintCenteredText(
+        canvas,
+        text: bar.pattern,
+        x: barLeft,
+        y: topPad + chartHeight + 6,
+        width: barWidth,
+        style: TextStyle(
+          color: _getPatternColor(bar.pattern),
+          fontSize: 12,
+          fontWeight: FontWeight.bold,
+        ),
+      );
+
+      // Count di bawah label pola
+      _paintCenteredText(
+        canvas,
+        text: '${bar.count}x',
+        x: barLeft,
+        y: topPad + chartHeight + 24,
+        width: barWidth,
+        style: const TextStyle(
+          color: Colors.grey,
+          fontSize: 10,
+        ),
+      );
+    }
+  }
+
+  void _paintCenteredText(
+    Canvas canvas, {
+    required String text,
+    required double x,
+    required double y,
+    required double width,
+    required TextStyle style,
+  }) {
+    final TextPainter tp = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textAlign: TextAlign.center,
+      textDirection: TextDirection.ltr,
+    );
+    tp.layout(minWidth: width, maxWidth: width);
+    tp.paint(canvas, Offset(x, y));
+  }
+
+  @override
+  bool shouldRepaint(HistogramPainter oldDelegate) => oldDelegate.bars != bars;
 }

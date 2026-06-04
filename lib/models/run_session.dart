@@ -4,19 +4,29 @@
 class LrcPoint {
   final double y;
   final String pattern;
+  // Pola yang sebenarnya terdeteksi di cycle ini (mis. "3:2", "2:2", "5:3").
+  // Berbeda dari `pattern` yang merupakan TARGET pattern user.
+  // Nullable untuk backward compat dengan data lari lama.
+  final String? actualPattern;
 
-  const LrcPoint({required this.y, required this.pattern});
+  const LrcPoint({
+    required this.y,
+    required this.pattern,
+    this.actualPattern,
+  });
 
   factory LrcPoint.fromJson(Map<String, dynamic> json) {
     return LrcPoint(
       y: (json['y'] as num?)?.toDouble() ?? 0.0,
       pattern: json['pattern']?.toString() ?? "3:2",
+      actualPattern: json['actualPattern']?.toString(),
     );
   }
 
   Map<String, dynamic> toJson() => {
     'y': y,
     'pattern': pattern,
+    'actualPattern': actualPattern,
   };
 }
 

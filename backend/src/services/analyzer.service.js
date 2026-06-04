@@ -174,7 +174,8 @@ const analyzeOldFormat = (rawData) => {
 
             graphDataPoints.push({
                 y: mapPatternToY(actualPattern),
-                targetPattern: targetPatternStr
+                targetPattern: targetPatternStr,
+                actualPattern: actualPattern,
             });
         });
 
@@ -202,7 +203,8 @@ const analyzeOldFormat = (rawData) => {
             }
             finalGraphData.push({
                 y: parseFloat((sumY / count).toFixed(2)),
-                pattern: graphDataPoints[i].targetPattern
+                pattern: graphDataPoints[i].targetPattern,
+                actualPattern: graphDataPoints[i].actualPattern,
             });
         }
 
@@ -462,6 +464,7 @@ const analyzeNewFormat = (rawData) => {
             graphDataPoints.push({
                 y: mapPatternToY(actualPattern),
                 targetPattern: targetPatternStr,
+                actualPattern: actualPattern,
             });
         });
 
@@ -523,6 +526,7 @@ const analyzeNewFormat = (rawData) => {
             finalGraphData.push({
                 y: parseFloat((sumY / count).toFixed(2)),
                 pattern: graphDataPoints[k].targetPattern,
+                actualPattern: graphDataPoints[k].actualPattern,
             });
         }
 
