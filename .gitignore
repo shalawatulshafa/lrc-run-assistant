@@ -6,6 +6,7 @@ build/
 .symlinks/
 *.lock
 *.pid
+*.zip
 
 # Android
 android/.gradle/

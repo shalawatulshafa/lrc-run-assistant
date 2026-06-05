@@ -158,9 +158,15 @@ const analyzeOldFormat = (rawData) => {
             const actualPattern = detectActualPattern(cycle.in, cycle.ex);
             const targetPatternStr = convertPatternId(cycle.activeTargetPatternId);
 
-            if (actualPattern === targetPatternStr ||
-                (targetPatternStr === "3:2" && cycle.in === 3 && cycle.ex === 2) ||
-                (targetPatternStr === "2:1" && cycle.in === 2 && cycle.ex === 1)) {
+            // Kepatuhan STRICT: cycle harus persis sesuai target N:M.
+            // Tidak lagi pakai matching berbasis ratio (detectActualPattern) yang
+            // mengklasifikasi cycle in=2 ex=0 sebagai "2:1" karena rasio-nya
+            // 2.0 — user yang skip step EX atau transisi terlalu cepat sekarang
+            // tercatat sebagai non-compliant.
+            const targetParts = targetPatternStr.split(':');
+            const targetIn = parseInt(targetParts[0], 10);
+            const targetEx = parseInt(targetParts[1], 10);
+            if (cycle.in === targetIn && cycle.ex === targetEx) {
                 matchCount++;
             }
             totalCycles++;
@@ -393,9 +399,10 @@ const analyzeNewFormat = (rawData) => {
             // Skip cycle kalau tidak ada step (user napas tapi tidak lari)
             if (inSteps.length === 0 && exSteps.length === 0) return;
 
-            // === Step-anchored compliance ===
-            // Untuk tiap step, expected phase dari cycle position; actual dari breath state aktual.
-            // Window ±50ms ke transition terdekat = borderline → no penalty.
+            // === Step-anchored compliance (STRICT, no tolerance window) ===
+            // Untuk tiap step, expected phase dari cycle position; actual dari
+            // breath state aktual. Tidak ada toleransi waktu — kalau step
+            // landing di phase yang salah, dihukum penuh.
             const allCycleSteps = [...inSteps, ...exSteps].sort((a, b) => a.timestamp - b.timestamp);
             allCycleSteps.forEach((step, idx) => {
                 const cyclePos = idx + 1; // 1-indexed
@@ -410,17 +417,8 @@ const analyzeNewFormat = (rawData) => {
                     }
                 }
 
-                // Borderline window check
-                let inToleranceWindow = false;
-                for (const t of transitions) {
-                    if (Math.abs(step.timestamp - t.timestamp) <= TOLERANCE_MS) {
-                        inToleranceWindow = true;
-                        break;
-                    }
-                }
-
                 totalSteps++;
-                if (inToleranceWindow || expectedPhase === actualPhase) {
+                if (expectedPhase === actualPhase) {
                     compliantSteps++;
                 }
             });
