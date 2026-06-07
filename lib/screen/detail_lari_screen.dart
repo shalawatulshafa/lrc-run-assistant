@@ -766,7 +766,7 @@ class __SwipeableLrcCardState extends State<_SwipeableLrcCard> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Text(
-                          'LRC Rata-Rata (${entries[index].key})', 
+                          'Rata-Rata (${entries[index].key})', 
                           style: const TextStyle(color: Color(0xFFF77226), fontWeight: FontWeight.bold, fontSize: 11),
                           textAlign: TextAlign.center,
                         ),
@@ -797,7 +797,7 @@ class __SwipeableLrcCardState extends State<_SwipeableLrcCard> {
         : Column( // TAMPILAN NORMAL JIKA HANYA 1 POLA
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Text('LRC Rata-Rata', style: TextStyle(color: Color(0xFFF77226), fontWeight: FontWeight.bold, fontSize: 12)),
+              const Text('Rata-Rata', style: TextStyle(color: Color(0xFFF77226), fontWeight: FontWeight.bold, fontSize: 12)),
               const SizedBox(height: 8),
               Text(
                 entries.isNotEmpty ? entries.first.value : '-', 
