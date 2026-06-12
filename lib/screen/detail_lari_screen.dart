@@ -1,7 +1,6 @@
-﻿import 'dart:io';
+﻿import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/run_session.dart';
 import '../services/run_history_storage.dart';
@@ -629,7 +628,6 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
 
     setState(() => _isExporting = true);
     try {
-      final Directory tempDir = await getTemporaryDirectory();
       final String safeTitle = session.title
           .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_')
           .replaceAll(RegExp(r'_+'), '_');
@@ -637,14 +635,24 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
       final String dateStamp =
           '${d.year}${d.month.toString().padLeft(2, '0')}${d.day.toString().padLeft(2, '0')}';
       final String fileName = 'lrc_${safeTitle}_$dateStamp.csv';
-      final File file = File('${tempDir.path}/$fileName');
-      await file.writeAsString(session.rawCsv!);
 
-      await Share.shareXFiles(
-        [XFile(file.path, mimeType: 'text/csv')],
-        subject: 'Data Lari LRC: ${session.title}',
-        text: 'Raw CSV ${session.title} (${session.duration})',
+      // Buka dialog "Simpan ke..." bawaan sistem agar file langsung
+      // tersimpan di lokasi pilihan user (mis. folder Download), bukan
+      // dibagikan ke aplikasi lain.
+      final String? savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Simpan CSV',
+        fileName: fileName,
+        type: FileType.custom,
+        allowedExtensions: const ['csv'],
+        bytes: utf8.encode(session.rawCsv!),
       );
+
+      if (!mounted) return;
+      if (savedPath == null) {
+        // User membatalkan dialog simpan.
+        return;
+      }
+      SnackbarHelper.showSuccess(context, 'CSV tersimpan: $fileName');
     } catch (e) {
       if (!mounted) return;
       SnackbarHelper.showError(

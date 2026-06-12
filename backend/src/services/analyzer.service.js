@@ -1,8 +1,3 @@
-// ============================================================
-// Shared helpers (hoisted ke module scope agar bisa dipakai
-// di old & new format analyzer tanpa duplikasi)
-// ============================================================
-
 const convertPatternId = (id) => {
     const map = { 0: "3:2", 1: "2:1", 2: "2:2", 3: "3:3", 4: "4:4", 5: "4:3", 6: "1:1" };
     return map[id] || "3:2";
@@ -34,13 +29,8 @@ const parsePattern = (patternStr) => {
     };
 };
 
-const CSV_HEADER = 'sessionId,date,time,timestamp_ms,breathPhase,step,spm,patternId';
+const CSV_HEADER = 'sesi,mulai_lari,waktu_ms,breathPhase,step,spm,patternID';
 
-// ============================================================
-// Format detection
-// Format baru = ada minimal 1 row dengan step=0 DAN breathPhase != 0
-// (baris transisi napas dedicated). Format lama = tidak ada row seperti itu.
-// ============================================================
 
 const detectFormat = (rawData) => {
     const lines = rawData.split(/[\n;]/);
@@ -56,12 +46,6 @@ const detectFormat = (rawData) => {
     }
     return 'old';
 };
-
-// ============================================================
-// OLD FORMAT ANALYZER (logika UTUH dari kode existing —
-// tidak ada perubahan algoritmik, hanya output tambah 3 field
-// baru bernilai null untuk konsistensi schema dengan new format)
-// ============================================================
 
 const analyzeOldFormat = (rawData) => {
     const rawLines = rawData.split(/[\n;]/).filter(row => row.trim() !== '');
@@ -157,12 +141,6 @@ const analyzeOldFormat = (rawData) => {
         session.cycles.forEach(cycle => {
             const actualPattern = detectActualPattern(cycle.in, cycle.ex);
             const targetPatternStr = convertPatternId(cycle.activeTargetPatternId);
-
-            // Kepatuhan STRICT: cycle harus persis sesuai target N:M.
-            // Tidak lagi pakai matching berbasis ratio (detectActualPattern) yang
-            // mengklasifikasi cycle in=2 ex=0 sebagai "2:1" karena rasio-nya
-            // 2.0 — user yang skip step EX atau transisi terlalu cepat sekarang
-            // tercatat sebagai non-compliant.
             const targetParts = targetPatternStr.split(':');
             const targetIn = parseInt(targetParts[0], 10);
             const targetEx = parseInt(targetParts[1], 10);
@@ -240,29 +218,6 @@ const analyzeOldFormat = (rawData) => {
 
     return analyzedSessions;
 };
-
-// ============================================================
-// NEW FORMAT ANALYZER (step-anchored compliance dengan window
-// tolerance ±50ms, plus 3 metrik kuantitatif: avgLag,
-// phaseDrift, consistencyScore)
-//
-// Algoritma:
-//   1. Parse rows: pisah breathTransitions (step=0) dan
-//      stepEvents (step=1)
-//   2. Debounce transitions <100ms apart (sensor noise)
-//   3. Build cycles dari triple (+1, -1, +1) transitions
-//   4. Per cycle:
-//      a. Step-anchored compliance: untuk tiap step, expected
-//         phase dari cycle position + actual phase dari breath
-//         state aktual. Window ±50ms = borderline (no penalty).
-//      b. Lag relative (jawaban #2 = B): expected next
-//         transition = previous transition + N × avg step
-//         interval di phase itu.
-//   5. Aggregate: compliance %, avgLag, phaseDrift (regression
-//      slope), consistencyScore (100 - stddev/10).
-//   6. Output juga legacy fields (avgLrc, rawLrcData) supaya
-//      UI existing tetap jalan.
-// ============================================================
 
 const TOLERANCE_MS = 50;
 const DEBOUNCE_MS = 100;
@@ -399,10 +354,6 @@ const analyzeNewFormat = (rawData) => {
             // Skip cycle kalau tidak ada step (user napas tapi tidak lari)
             if (inSteps.length === 0 && exSteps.length === 0) return;
 
-            // === Step-anchored compliance (STRICT, no tolerance window) ===
-            // Untuk tiap step, expected phase dari cycle position; actual dari
-            // breath state aktual. Tidak ada toleransi waktu — kalau step
-            // landing di phase yang salah, dihukum penuh.
             const allCycleSteps = [...inSteps, ...exSteps].sort((a, b) => a.timestamp - b.timestamp);
             allCycleSteps.forEach((step, idx) => {
                 const cyclePos = idx + 1; // 1-indexed
@@ -556,11 +507,6 @@ const analyzeNewFormat = (rawData) => {
     return analyzedSessions;
 };
 
-// ============================================================
-// Entry point: detect format dan dispatch ke analyzer yang
-// tepat. Output schema identik (semua field selalu ada di
-// response; field baru = null untuk format lama).
-// ============================================================
 
 export const analyzeRunData = (rawData) => {
     if (!rawData || typeof rawData !== 'string') return [];
