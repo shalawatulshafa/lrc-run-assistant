@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 
 class ApiService {
   // Pastikan URL ini sudah mengarah ke backend Anda yang terbaru
-  // static const String baseUrl = 'https://api.secondwindlrc.my.id/v1';
+  static const String baseUrl = 'https://api.secondwindlrc.my.id/v1';
   // URL lama (Railway) — cadangan kalau perlu balik saat tes:
   // static const String baseUrl = 'https://lrc-run-assistant-production.up.railway.app/v1';
 
