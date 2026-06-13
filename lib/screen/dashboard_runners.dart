@@ -392,6 +392,10 @@ class DashboardRunnersState extends State<DashboardRunners> {
                             if (result == true) {
                               await _loadLatestRunData();
                               widget.onDataSaved?.call();
+                            } else if (result == 'history') {
+                              // Multi-sesi: data sudah di-refresh via onDataDownloaded,
+                              // minta MainNavigation pindah ke tab History
+                              widget.onJumpToHistory?.call();
                             }
                           } finally {
                             if (mounted) setState(() => _isDownloading = false);

@@ -151,9 +151,9 @@ class RunSyncService {
 
     return completer.future
         .timeout(
-          const Duration(seconds: 60),
+          const Duration(minutes: 5),
           onTimeout: () => throw Exception(
-            "Sinkronisasi terlalu lama (>60 detik). Pastikan alat menyala dan dekat dengan HP, lalu coba lagi.",
+            "Sinkronisasi terlalu lama (>5 menit). Pastikan alat menyala dan dekat dengan HP, lalu coba lagi.",
           ),
         )
         .whenComplete(() async {

@@ -143,16 +143,21 @@ class _DownloadDataScreenState extends State<DownloadDataScreen> {
 
       if (!mounted) return;
 
-      // 4. Navigasi ke Detail Layar menggunakan Sesi Terakhir (terbaru)
-      if (latestSession != null) {
+      // 4. Navigasi sesuai jumlah sesi yang berhasil disimpan:
+      //    - 1 sesi  → langsung buka DetailLariScreen sesi tersebut
+      //    - >1 sesi → pop dengan sinyal 'history' agar DashboardRunners
+      //                meneruskan ke MainNavigation untuk pindah ke tab History
+      if (runsData.length == 1 && latestSession != null) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => DetailLariScreen(runSession: latestSession!),
           ),
         );
+      } else if (runsData.length > 1) {
+        Navigator.pop(context, 'history');
       } else {
-        Navigator.pop(context); // Kembali jika entah kenapa gagal
+        Navigator.pop(context); // Fallback: tidak ada sesi tersimpan
       }
 
     } catch (e) {
