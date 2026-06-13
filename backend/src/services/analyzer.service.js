@@ -31,7 +31,6 @@ const parsePattern = (patternStr) => {
 
 const CSV_HEADER = 'sesi,mulai_lari,waktu_ms,breathPhase,step,spm,patternID';
 
-
 const detectFormat = (rawData) => {
     const lines = rawData.split(/[\n;]/);
     for (const line of lines) {
@@ -141,6 +140,12 @@ const analyzeOldFormat = (rawData) => {
         session.cycles.forEach(cycle => {
             const actualPattern = detectActualPattern(cycle.in, cycle.ex);
             const targetPatternStr = convertPatternId(cycle.activeTargetPatternId);
+
+            // Kepatuhan STRICT: cycle harus persis sesuai target N:M.
+            // Tidak lagi pakai matching berbasis ratio (detectActualPattern) yang
+            // mengklasifikasi cycle in=2 ex=0 sebagai "2:1" karena rasio-nya
+            // 2.0 — user yang skip step EX atau transisi terlalu cepat sekarang
+            // tercatat sebagai non-compliant.
             const targetParts = targetPatternStr.split(':');
             const targetIn = parseInt(targetParts[0], 10);
             const targetEx = parseInt(targetParts[1], 10);
@@ -220,7 +225,7 @@ const analyzeOldFormat = (rawData) => {
 };
 
 const TOLERANCE_MS = 50;
-const DEBOUNCE_MS = 100;
+const DEBOUNCE_MS = 300;
 
 const analyzeNewFormat = (rawData) => {
     const rawLines = rawData.split(/[\n;]/).filter(row => row.trim() !== '');
@@ -339,40 +344,63 @@ const analyzeNewFormat = (rawData) => {
             const patternStr = convertPatternId(id);
             averagesMap[patternStr] = { inSum: 0, exSum: 0, count: 0 };
         });
+        let globalStepCounter = 0;
+        let patterAnchorSet = false;
+
+        // Tentukan N dan M dari pola dominan sesi ini
+        const dominantPatternId = session.targetPatternsUsed.size > 0
+            ? [...session.targetPatternsUsed][0]
+            : 0;
+        const dominantPattern = convertPatternId(dominantPatternId);
+        const { N: globalN, M: globalM } = parsePattern(dominantPattern);
+        const globalCycleLen = (globalN > 0 && globalM > 0) ? globalN + globalM : 5;
+
+        stepEvents.forEach(step => {
+            // Actual phase: cari transisi terakhir dengan ts <= step.ts
+            let actualPhase = 0;
+            for (let j = transitions.length - 1; j >= 0; j--) {
+                if (transitions[j].timestamp <= step.timestamp) {
+                    actualPhase = transitions[j].breathPhase;
+                    break;
+                }
+            }
+
+            // Skip langkah sebelum transisi napas pertama tercatat
+            if (actualPhase === 0) return;
+
+            // Reset posisi global saat IN baru dimulai (setiap cycle baru)
+            // agar posisi tidak drift akibat langkah yang terlewat sensor
+            const prevPhaseForStep = (() => {
+                for (let j = transitions.length - 1; j >= 0; j--) {
+                    if (transitions[j].timestamp <= step.timestamp) {
+                        // Cari transisi sebelumnya
+                        if (j > 0) return transitions[j - 1].breathPhase;
+                        return 0;
+                    }
+                }
+                return 0;
+            })();
+
+            // Expected phase dari posisi dalam pola
+            const posInCycle = globalStepCounter % globalCycleLen;
+            const expectedPhase = posInCycle < globalN ? 1 : -1;
+
+            totalSteps++;
+            if (actualPhase === expectedPhase) compliantSteps++;
+            globalStepCounter++;
+        });
 
         cycles.forEach((cycle, cycleIdx) => {
             const { inStartTs, exStartTs, nextInStartTs, patternID } = cycle;
             const targetPatternStr = convertPatternId(patternID);
             const { N, M } = parsePattern(targetPatternStr);
 
-            if (N === 0 || M === 0) return; // Pola invalid
+            if (N === 0 || M === 0) return;
 
-            // Get step events di phase IN dan EX cycle ini
             const inSteps = stepEvents.filter(s => s.timestamp >= inStartTs && s.timestamp < exStartTs);
             const exSteps = stepEvents.filter(s => s.timestamp >= exStartTs && s.timestamp < nextInStartTs);
 
-            // Skip cycle kalau tidak ada step (user napas tapi tidak lari)
             if (inSteps.length === 0 && exSteps.length === 0) return;
-
-            const allCycleSteps = [...inSteps, ...exSteps].sort((a, b) => a.timestamp - b.timestamp);
-            allCycleSteps.forEach((step, idx) => {
-                const cyclePos = idx + 1; // 1-indexed
-                const expectedPhase = cyclePos <= N ? 1 : -1;
-
-                // Actual phase: cari transition terakhir dengan ts <= step.ts
-                let actualPhase = 0;
-                for (let j = transitions.length - 1; j >= 0; j--) {
-                    if (transitions[j].timestamp <= step.timestamp) {
-                        actualPhase = transitions[j].breathPhase;
-                        break;
-                    }
-                }
-
-                totalSteps++;
-                if (expectedPhase === actualPhase) {
-                    compliantSteps++;
-                }
-            });
 
             // === Lag IN→EX transition ===
             if (inSteps.length >= 2) {
@@ -506,7 +534,6 @@ const analyzeNewFormat = (rawData) => {
 
     return analyzedSessions;
 };
-
 
 export const analyzeRunData = (rawData) => {
     if (!rawData || typeof rawData !== 'string') return [];
