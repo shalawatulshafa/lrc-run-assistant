@@ -3,9 +3,24 @@ const convertPatternId = (id) => {
     return map[id] || "3:2";
 };
 
+// Skala Y final: 8 baris untuk pola yang wajar terjadi saat lari. 2:3
+// disengaja disisipkan antara 2:2 dan 3:2 (bukan diurutkan ketat secara
+// rasio) karena secara persepsi pengguna ia dianggap "sedikit lebih
+// exhale-berat dari 3:2", bukan ditempatkan jauh di bagian bawah skala.
+//
+// Pola dengan exhale jauh lebih panjang dari inhale (1:4, 1:3, 2:4, 1:2,
+// 3:4) TIDAK dipetakan — fungsi mengembalikan null untuk pola tersebut,
+// karena pola seperti itu jarang terjadi secara wajar saat lari dan lebih
+// sering merupakan artefak sensor napas (mirip kasus dropout yang sudah
+// ditangani MAX_STEPS_PER_PHASE). Caller harus mengecualikan siklus
+// ber-y null dari grafik, BUKAN memetakannya ke kategori terdekat —
+// menyamarkannya sebagai pola valid akan menyesatkan pengguna.
 const mapPatternToY = (patternStr) => {
-    const mapping = { "4:4": 7, "4:3": 6, "3:3": 5, "3:2": 4, "2:2": 3, "2:1": 2, "1:1": 1 };
-    return mapping[patternStr] || 4;
+    const mapping = {
+        "1:1": 1, "2:1": 2, "2:2": 3, "2:3": 4,
+        "3:2": 5, "3:3": 6, "4:3": 7, "4:4": 8,
+    };
+    return mapping[patternStr] ?? null;
 };
 
 const detectActualPattern = (inSteps, exSteps) => {
@@ -149,6 +164,7 @@ const analyzeOldFormat = (rawData) => {
         let matchCount = 0;
         let totalCycles = 0;
         const graphDataPoints = [];
+        const patternDistribution = {};
 
         const averagesMap = {};
         session.targetPatternsUsed.forEach(id => {
@@ -173,6 +189,12 @@ const analyzeOldFormat = (rawData) => {
             }
             totalCycles++;
 
+            // Distribusi dihitung dari SEMUA siklus, termasuk yang nanti
+            // dikecualikan dari grafik (yValue null) — supaya histogram di
+            // frontend bisa pakai basis yang sama persis dengan compliance,
+            // alih-alih basis graphDataPoints yang sudah terfilter.
+            patternDistribution[actualPattern] = (patternDistribution[actualPattern] || 0) + 1;
+
             if (!averagesMap[targetPatternStr]) {
                 averagesMap[targetPatternStr] = { inSum: 0, exSum: 0, count: 0 };
             }
@@ -180,11 +202,19 @@ const analyzeOldFormat = (rawData) => {
             averagesMap[targetPatternStr].exSum += cycle.ex;
             averagesMap[targetPatternStr].count++;
 
-            graphDataPoints.push({
-                y: mapPatternToY(actualPattern),
-                targetPattern: targetPatternStr,
-                actualPattern: actualPattern,
-            });
+            // Hanya masukkan ke grafik jika pola berada dalam skala Y yang
+            // wajar (lihat mapPatternToY). Pola exhale-dominan ekstrem
+            // (mis. 1:3, 2:4) dikecualikan dari chart, tapi tetap terhitung
+            // di compliance, averagesMap, dan patternDistribution di atas —
+            // ketiganya tidak bergantung pada posisi sumbu Y.
+            const yValue = mapPatternToY(actualPattern);
+            if (yValue !== null) {
+                graphDataPoints.push({
+                    y: yValue,
+                    targetPattern: targetPatternStr,
+                    actualPattern: actualPattern,
+                });
+            }
         });
 
         const compliance = totalCycles > 0 ? Math.round((matchCount / totalCycles) * 100) : 0;
@@ -238,6 +268,11 @@ const analyzeOldFormat = (rawData) => {
             compliance: compliance,
             avgLrc: avgLrcJsonString,
             rawLrcData: finalGraphData,
+            // Distribusi pola dari SEMUA siklus (basis sama dengan
+            // compliance), untuk histogram frontend. Berbeda dari
+            // rawLrcData yang sudah terfilter outlier untuk keperluan
+            // chart garis. Lihat komentar di patternDistribution di atas.
+            patternDistribution: patternDistribution,
             rawCsv: rawCsvForSession,
             // Metrik baru tidak tersedia untuk format lama
             avgLag: null,
@@ -384,6 +419,7 @@ const analyzeNewFormat = (rawData) => {
         const lags = []; // semua lag (absolute & signed)
         const cycleLags = []; // {cycleIdx, lag} untuk phase drift regression
         const graphDataPoints = [];
+        const patternDistribution = {};
         const averagesMap = {};
 
         // Initialize averagesMap untuk semua pola yang pernah aktif
@@ -501,11 +537,25 @@ const analyzeNewFormat = (rawData) => {
             averagesMap[targetPatternStr].exSum += exSteps.length;
             averagesMap[targetPatternStr].count++;
 
-            graphDataPoints.push({
-                y: mapPatternToY(actualPattern),
-                targetPattern: targetPatternStr,
-                actualPattern: actualPattern,
-            });
+            // Distribusi dihitung dari semua siklus yang lolos dropout
+            // outlier guard di atas (MAX_STEPS_PER_PHASE), terlepas dari
+            // apakah pola itu lolos filter sumbu Y (mapPatternToY) atau
+            // tidak — supaya histogram frontend bisa pakai basis yang
+            // sama dengan averagesMap/avgLrc, bukan basis graphDataPoints
+            // yang sudah terfilter lebih jauh untuk keperluan chart garis.
+            patternDistribution[actualPattern] = (patternDistribution[actualPattern] || 0) + 1;
+
+            // Hanya masukkan ke grafik jika pola berada dalam skala Y yang
+            // wajar — lihat komentar di analyzeOldFormat untuk rationale
+            // lengkap. Tidak memengaruhi compliance/averagesMap di atas.
+            const yValue = mapPatternToY(actualPattern);
+            if (yValue !== null) {
+                graphDataPoints.push({
+                    y: yValue,
+                    targetPattern: targetPatternStr,
+                    actualPattern: actualPattern,
+                });
+            }
         });
 
         // === Aggregate metrics ===
@@ -601,6 +651,8 @@ const analyzeNewFormat = (rawData) => {
             compliance: compliance,
             avgLrc: avgLrcJsonString,
             rawLrcData: finalGraphData,
+            // Lihat komentar patternDistribution di analyzeOldFormat.
+            patternDistribution: patternDistribution,
             rawCsv: rawCsvForSession,
             avgLag,
             phaseDrift,

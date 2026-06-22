@@ -41,6 +41,11 @@ class RunSession {
   final int compliance;
   final String duration;
   final List<LrcPoint> rawLrcData;
+  // Distribusi pola dari SEMUA siklus (basis sama dengan compliance),
+  // dipakai histogram. Berbeda dari rawLrcData yang sudah terfilter
+  // outlier sumbu-Y untuk keperluan chart garis. Null untuk sesi lama
+  // sebelum field ini ditambahkan di backend.
+  final Map<String, int>? patternDistribution;
   final String? rawCsv;
   // Metrik baru dari format CSV step-anchored (null untuk data lari lama)
   final double? avgLag;
@@ -58,6 +63,7 @@ class RunSession {
     required this.compliance,
     required this.duration,
     this.rawLrcData = const [],
+    this.patternDistribution,
     this.rawCsv,
     this.avgLag,
     this.phaseDrift,
@@ -76,6 +82,7 @@ class RunSession {
     int? compliance,
     String? duration,
     List<LrcPoint>? rawLrcData,
+    Map<String, int>? patternDistribution,
     String? rawCsv,
     double? avgLag,
     double? phaseDrift,
@@ -92,6 +99,7 @@ class RunSession {
       compliance: compliance ?? this.compliance,
       duration: duration ?? this.duration,
       rawLrcData: rawLrcData ?? this.rawLrcData,
+      patternDistribution: patternDistribution ?? this.patternDistribution,
       rawCsv: rawCsv ?? this.rawCsv,
       avgLag: avgLag ?? this.avgLag,
       phaseDrift: phaseDrift ?? this.phaseDrift,
@@ -134,6 +142,13 @@ class RunSession {
       }).toList();
     }
 
+    Map<String, int>? parsedPatternDistribution;
+    if (json['patternDistribution'] != null && json['patternDistribution'] is Map) {
+      parsedPatternDistribution = (json['patternDistribution'] as Map).map(
+        (key, value) => MapEntry(key.toString(), int.tryParse(value.toString()) ?? 0),
+      );
+    }
+
     return RunSession(
       id: json['id']?.toString() ?? '',
       title: json['title']?.toString() ?? 'Lari LRC',
@@ -145,6 +160,7 @@ class RunSession {
       compliance: int.tryParse(json['compliance']?.toString() ?? '0') ?? 0,
       duration: json['duration']?.toString() ?? '00:00',
       rawLrcData: parsedGraphData,
+      patternDistribution: parsedPatternDistribution,
       rawCsv: json['rawCsv']?.toString(),
       avgLag: json['avgLag'] != null ? double.tryParse(json['avgLag'].toString()) : null,
       phaseDrift: json['phaseDrift'] != null ? double.tryParse(json['phaseDrift'].toString()) : null,
@@ -164,6 +180,7 @@ class RunSession {
       'compliance': compliance,
       'duration': duration,
       'rawLrcData': rawLrcData.map((e) => e.toJson()).toList(),
+      'patternDistribution': patternDistribution,
       'rawCsv': rawCsv,
       'avgLag': avgLag,
       'phaseDrift': phaseDrift,

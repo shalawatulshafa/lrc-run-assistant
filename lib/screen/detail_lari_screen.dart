@@ -31,6 +31,11 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   bool _isExporting = false;
   bool _showHistogram = false;
   List<LrcPoint> _chartData = [];
+  // Distribusi pola dari backend (basis sama dengan compliance), dipakai
+  // histogram. Null untuk sesi lama sebelum field ini ditambahkan — pada
+  // kasus itu histogram fallback ke perhitungan dari _chartData seperti
+  // sebelumnya, meski basisnya tidak akan persis sama dengan compliance.
+  Map<String, int>? _patternDistribution;
 
   @override
   void initState() {
@@ -48,6 +53,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
       _currentTitle = widget.runSession!.title;
       targetId = widget.runSession!.id;
       _chartData = _runSession!.rawLrcData; 
+      _patternDistribution = _runSession!.patternDistribution;
     } else if (widget.runId != null) {
       await _loadDataFromId(widget.runId!);
       targetId = widget.runId;
@@ -69,6 +75,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     _runSession = run;
     _currentTitle = run.title;
     _chartData = run.rawLrcData; 
+    _patternDistribution = run.patternDistribution;
   }
 
   Future<void> _fetchRawDataForChart(String id) async {
@@ -102,6 +109,12 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
         if (mounted) {
           setState(() {
             _chartData = pointList;
+            final dynamic distAny = apiData['patternDistribution'];
+            if (distAny is Map) {
+              _patternDistribution = distAny.map(
+                (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+              );
+            }
           });
         }
       }
@@ -178,6 +191,7 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
               Text('4:3', style: TextStyle(fontSize: 10, color: Colors.grey)),
               Text('3:3', style: TextStyle(fontSize: 10, color: Colors.grey)),
               Text('3:2', style: TextStyle(fontSize: 10, color: Colors.grey)),
+              Text('2:3', style: TextStyle(fontSize: 10, color: Colors.grey)),
               Text('2:2', style: TextStyle(fontSize: 10, color: Colors.grey)),
               Text('2:1', style: TextStyle(fontSize: 10, color: Colors.grey)),
               Text('1:1', style: TextStyle(fontSize: 10, color: Colors.grey)),
@@ -242,21 +256,35 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     );
   }
 
-  // Group _chartData by actualPattern → filter low-frequency → sort desc.
+  // Distribusi pola untuk histogram. Memprioritaskan patternDistribution
+  // dari backend, yang basisnya sama dengan compliance (mencakup SEMUA
+  // siklus yang lolos dropout outlier guard, termasuk pola exhale-dominan
+  // yang dikecualikan dari grafik garis). Fallback ke hitung-ulang dari
+  // _chartData hanya untuk sesi lama yang belum punya field ini — pada
+  // fallback itu basisnya TIDAK akan persis sama dengan compliance, karena
+  // _chartData sudah terfilter outlier sumbu-Y.
   // Filter rule: hide kalau frequency <5% DAN <2 absolute count.
   List<HistogramBar> _computeHistogramData() {
-    if (_chartData.isEmpty) return [];
+    final Map<String, int> counts;
+    final int total;
 
-    final Map<String, int> counts = {};
-    for (final point in _chartData) {
-      // Fallback ke target pattern kalau actualPattern null (data lama)
-      final key = (point.actualPattern != null && point.actualPattern!.isNotEmpty)
-          ? point.actualPattern!
-          : point.pattern;
-      counts[key] = (counts[key] ?? 0) + 1;
+    if (_patternDistribution != null && _patternDistribution!.isNotEmpty) {
+      counts = _patternDistribution!;
+      total = counts.values.fold(0, (sum, c) => sum + c);
+    } else {
+      if (_chartData.isEmpty) return [];
+      counts = {};
+      for (final point in _chartData) {
+        final key = (point.actualPattern != null && point.actualPattern!.isNotEmpty)
+            ? point.actualPattern!
+            : point.pattern;
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+      total = _chartData.length;
     }
 
-    final int total = _chartData.length;
+    if (total == 0) return [];
+
     final List<HistogramBar> bars = [];
     counts.forEach((pattern, count) {
       final double pct = count / total * 100;
@@ -827,6 +855,7 @@ class ChartPainter extends CustomPainter {
   // Menentukan warna berdasarkan target pola
   Color _getPatternColor(String pattern) {
     if (pattern.contains('2:1')) return Colors.blue;
+    if (pattern.contains('2:3')) return Colors.amber;
     if (pattern.contains('2:2')) return Colors.green;
     if (pattern.contains('4:4')) return Colors.purple;
     if (pattern.contains('3:3')) return Colors.teal;
@@ -836,15 +865,15 @@ class ChartPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final Paint gridPaint = Paint()..color = Colors.grey.withOpacity(0.1)..strokeWidth = 1;
-    for (int i = 0; i < 7; i++) {
-      final double y = size.height * (i / 6);
+    for (int i = 0; i < 8; i++) {
+      final double y = size.height * (i / 7);
       canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
     }
 
     if (dataPoints.isEmpty) return;
 
     double minVal = 1.0; 
-    double maxVal = 7.0; 
+    double maxVal = 8.0; 
     double range = maxVal - minVal;
     double spacing = size.width / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
 
