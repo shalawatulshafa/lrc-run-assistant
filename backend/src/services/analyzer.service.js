@@ -29,7 +29,26 @@ const parsePattern = (patternStr) => {
     };
 };
 
+// 7 columns: date and time are combined into a single quoted CSV field
+// when exported (see mergeDateTimeColumn below), even though they arrive
+// as two separate columns in the raw input. This keeps mulai_lari as one
+// cell in spreadsheet software instead of being split across two columns.
 const CSV_HEADER = 'sesi,mulai_lari,waktu_ms,breathPhase,step,spm,patternID';
+
+// Merges a raw input line's separate date/time columns (parts[1], parts[2])
+// into a single quoted CSV field, so the exported row has the same column
+// count as CSV_HEADER. Without this, opening the export in Excel/Sheets
+// would misread the comma inside the unquoted date-time as a column
+// separator, shifting every subsequent value one column to the right.
+const mergeDateTimeColumn = (line) => {
+    const parts = line.split(',');
+    if (parts.length < 8) return line; // already malformed, leave as-is
+    const sesi = parts[0];
+    const tanggal = parts[1].replace(/"/g, '').trim();
+    const waktu = parts[2].replace(/"/g, '').trim();
+    const rest = parts.slice(3).join(',');
+    return `${sesi},"${tanggal}, ${waktu}",${rest}`;
+};
 
 const detectFormat = (rawData) => {
     const lines = rawData.split(/[\n;]/);
@@ -202,11 +221,13 @@ const analyzeOldFormat = (rawData) => {
 
         // Sort by timestamp column before export — same fix as new format,
         // see comment in analyzeNewFormat for full rationale.
-        const sortedRawLines = [...session.rawLines].sort((a, b) => {
-            const tsA = parseInt(a.split(',')[3], 10);
-            const tsB = parseInt(b.split(',')[3], 10);
-            return tsA - tsB;
-        });
+        const sortedRawLines = [...session.rawLines]
+            .sort((a, b) => {
+                const tsA = parseInt(a.split(',')[3], 10);
+                const tsB = parseInt(b.split(',')[3], 10);
+                return tsA - tsB;
+            })
+            .map(mergeDateTimeColumn);
 
         const rawCsvForSession = sortedRawLines.length > 0
             ? `${CSV_HEADER}\n${sortedRawLines.join('\n')}`
@@ -565,11 +586,18 @@ const analyzeNewFormat = (rawData) => {
         // already correct, but the exported rawCsv itself was still scrambled
         // in firmware write order. Sort by the timestamp column (parts[3])
         // here so the CSV a user downloads reads chronologically too.
-        const sortedRawLines = [...session.rawLines].sort((a, b) => {
-            const tsA = parseInt(a.split(',')[3], 10);
-            const tsB = parseInt(b.split(',')[3], 10);
-            return tsA - tsB;
-        });
+        //
+        // mergeDateTimeColumn collapses the raw input's separate date/time
+        // columns into one quoted field, matching CSV_HEADER's 7 columns —
+        // otherwise the unquoted comma between date and time gets misread
+        // as a column separator when opened in spreadsheet software.
+        const sortedRawLines = [...session.rawLines]
+            .sort((a, b) => {
+                const tsA = parseInt(a.split(',')[3], 10);
+                const tsB = parseInt(b.split(',')[3], 10);
+                return tsA - tsB;
+            })
+            .map(mergeDateTimeColumn);
 
         const rawCsvForSession = sortedRawLines.length > 0
             ? `${CSV_HEADER}\n${sortedRawLines.join('\n')}`
