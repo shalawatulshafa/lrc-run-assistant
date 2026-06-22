@@ -201,20 +201,16 @@ const analyzeOldFormat = (rawData) => {
         }
         const avgLrcJsonString = JSON.stringify(finalAvgLrcObj);
 
-        const finalGraphData = [];
-        for (let i = 0; i < graphDataPoints.length; i++) {
-            let sumY = 0;
-            let count = 0;
-            for (let j = Math.max(0, i - 1); j <= Math.min(graphDataPoints.length - 1, i + 1); j++) {
-                sumY += graphDataPoints[j].y;
-                count++;
-            }
-            finalGraphData.push({
-                y: parseFloat((sumY / count).toFixed(2)),
-                pattern: graphDataPoints[i].targetPattern,
-                actualPattern: graphDataPoints[i].actualPattern,
-            });
-        }
+        // Tidak ada smoothing pada y — setiap titik adalah kategori pola
+        // diskrit (3:2, 3:3, dst), bukan nilai kontinu. Merata-ratakan
+        // dengan tetangga menghasilkan posisi pecahan yang tidak sesuai
+        // kategori manapun, sehingga step chart "menggantung" di antara
+        // dua garis pola alih-alih mendarat tepat di satu garis.
+        const finalGraphData = graphDataPoints.map(point => ({
+            y: point.y,
+            pattern: point.targetPattern,
+            actualPattern: point.actualPattern,
+        }));
 
         const patternsArray = Array.from(session.targetPatternsUsed).map(id => convertPatternId(id));
         const sessionTargetPatternStr = patternsArray.join(" & ");
@@ -558,21 +554,14 @@ const analyzeNewFormat = (rawData) => {
         }
         const avgLrcJsonString = JSON.stringify(finalAvgLrcObj);
 
-        // Smoothing graph data (sama dengan old format)
-        const finalGraphData = [];
-        for (let k = 0; k < graphDataPoints.length; k++) {
-            let sumY = 0;
-            let count = 0;
-            for (let j = Math.max(0, k - 1); j <= Math.min(graphDataPoints.length - 1, k + 1); j++) {
-                sumY += graphDataPoints[j].y;
-                count++;
-            }
-            finalGraphData.push({
-                y: parseFloat((sumY / count).toFixed(2)),
-                pattern: graphDataPoints[k].targetPattern,
-                actualPattern: graphDataPoints[k].actualPattern,
-            });
-        }
+        // Tidak ada smoothing pada y — lihat komentar pada analyzeOldFormat
+        // untuk rationale lengkap. Setiap titik harus tetap di kategori
+        // pola diskritnya agar step chart di Flutter mendarat tepat di garis.
+        const finalGraphData = graphDataPoints.map(point => ({
+            y: point.y,
+            pattern: point.targetPattern,
+            actualPattern: point.actualPattern,
+        }));
 
         // Target pattern string
         const patternsArray = Array.from(session.targetPatternsUsed).map(id => convertPatternId(id));

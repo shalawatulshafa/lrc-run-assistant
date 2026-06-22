@@ -848,11 +848,14 @@ class ChartPainter extends CustomPainter {
     double range = maxVal - minVal;
     double spacing = size.width / (dataPoints.length > 1 ? dataPoints.length - 1 : 1);
 
-    // Menggambar per ruas agar warna bisa berubah-ubah
+    // Menggambar per ruas sebagai step chart (anak tangga), bukan garis
+    // diagonal — karena nilai y merepresentasikan kategori pola diskrit
+    // (3:2, 3:3, dst), bukan skala kontinu. Garis diagonal menyiratkan ada
+    // nilai "di antara" dua pola yang sebenarnya tidak bermakna apa pun.
     for (int i = 1; i < dataPoints.length; i++) {
       double x1 = (i - 1) * spacing;
       double y1 = size.height - ((dataPoints[i - 1].y - minVal) / range * size.height);
-      
+
       double x2 = i * spacing;
       double y2 = size.height - ((dataPoints[i].y - minVal) / range * size.height);
 
@@ -862,7 +865,12 @@ class ChartPainter extends CustomPainter {
         ..strokeWidth = 3
         ..strokeCap = StrokeCap.round;
 
-      canvas.drawLine(Offset(x1, y1), Offset(x2, y2), segmentPaint);
+      // Tahan datar di level y1 sampai pertengahan ruas, lompat vertikal,
+      // lalu lanjut datar di level y2 — hasilnya bentuk anak tangga.
+      final double xMid = x1 + (x2 - x1) / 2;
+      canvas.drawLine(Offset(x1, y1), Offset(xMid, y1), segmentPaint);
+      canvas.drawLine(Offset(xMid, y1), Offset(xMid, y2), segmentPaint);
+      canvas.drawLine(Offset(xMid, y2), Offset(x2, y2), segmentPaint);
     }
   }
 
