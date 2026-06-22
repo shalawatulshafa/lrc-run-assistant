@@ -277,7 +277,13 @@ const analyzeNewFormat = (rawData) => {
         } else if (step === 0 && (breathPhase === 1 || breathPhase === -1)) {
             session.breathTransitions.push({ timestamp, breathPhase, patternID });
         }
-        // step=0 dengan breathPhase=0 → diabaikan (placeholder)
+        // breathPhase === 0 is never treated as a breath transition, in either
+        // branch above. This commonly occurs at the start of a session before
+        // the breath sensor has detected its first inhale/exhale (firmware
+        // hasn't calibrated a baseline yet), so rows like (step=1, phase=0)
+        // are intentionally counted as step events only — they do not count
+        // toward, nor break, breath cycle construction. Likewise
+        // (step=0, phase=0) carries no usable transition info and is dropped.
     });
 
     // ---- Pass 2: Analyze each session ----
@@ -291,9 +297,25 @@ const analyzeNewFormat = (rawData) => {
         const seconds = durationSeconds % 60;
         const formattedDuration = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
+        // Sort breath transitions by timestamp BEFORE debouncing.
+        //
+        // ROOT CAUSE: ESP32 firmware writes step rows immediately using
+        // millis() at write-time (handleStepAnalysis -> writeLogEntry),
+        // but breath rows use breathSensor.getLastEventTimestamp() — the
+        // precise moment the sensor detected the transition, which is read
+        // and written on a LATER loop() iteration. The timestamp VALUE is
+        // accurate, but by the time it's written, several step rows with
+        // larger millis() may already be appended to /run.dat. File order
+        // is therefore not chronological even though every individual
+        // timestamp is correct. Sorting here restores chronological order
+        // for cycle-building without needing a firmware fix.
+        const sortedTransitions = [...session.breathTransitions].sort(
+            (a, b) => a.timestamp - b.timestamp
+        );
+
         // Debounce breath transitions (filter sensor noise <100ms apart)
         const transitions = [];
-        for (const t of session.breathTransitions) {
+        for (const t of sortedTransitions) {
             if (
                 transitions.length === 0 ||
                 t.timestamp - transitions[transitions.length - 1].timestamp >= DEBOUNCE_MS
@@ -401,6 +423,22 @@ const analyzeNewFormat = (rawData) => {
             const exSteps = stepEvents.filter(s => s.timestamp >= exStartTs && s.timestamp < nextInStartTs);
 
             if (inSteps.length === 0 && exSteps.length === 0) return;
+
+            // === Outlier guard: breath-sensor dropout ===
+            // If the breath sensor stops firing transitions for an extended
+            // period (e.g. poor skin contact, motion artifact) while the step
+            // sensor keeps counting normally, the two transitions bounding
+            // this "cycle" can be tens of seconds apart — producing absurd
+            // ratios like 27:3 instead of a real LRC pattern (max realistic
+            // pattern is 4:4). Such cycles are sensor dropout artifacts, not
+            // genuine breath-step data, so they are excluded from the
+            // averages and graph — but cycles entirely skipped here simply
+            // contribute no data point, they are not corrected or guessed.
+            const MAX_STEPS_PER_PHASE = 4;
+            if (inSteps.length > MAX_STEPS_PER_PHASE || exSteps.length > MAX_STEPS_PER_PHASE) {
+                return;
+            }
+
 
             // === Lag IN→EX transition ===
             if (inSteps.length >= 2) {
