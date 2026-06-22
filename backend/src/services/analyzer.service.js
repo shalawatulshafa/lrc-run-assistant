@@ -414,8 +414,8 @@ const analyzeNewFormat = (rawData) => {
         const stepEvents = [...session.stepEvents].sort((a, b) => a.timestamp - b.timestamp);
 
         // Per-cycle analysis
-        let totalSteps = 0;
-        let compliantSteps = 0;
+        let matchCount = 0;
+        let totalCycles = 0;
         const lags = []; // semua lag (absolute & signed)
         const cycleLags = []; // {cycleIdx, lag} untuk phase drift regression
         const graphDataPoints = [];
@@ -427,51 +427,20 @@ const analyzeNewFormat = (rawData) => {
             const patternStr = convertPatternId(id);
             averagesMap[patternStr] = { inSum: 0, exSum: 0, count: 0 };
         });
-        let globalStepCounter = 0;
-        let patterAnchorSet = false;
 
-        // Tentukan N dan M dari pola dominan sesi ini
-        const dominantPatternId = session.targetPatternsUsed.size > 0
-            ? [...session.targetPatternsUsed][0]
-            : 0;
-        const dominantPattern = convertPatternId(dominantPatternId);
-        const { N: globalN, M: globalM } = parsePattern(dominantPattern);
-        const globalCycleLen = (globalN > 0 && globalM > 0) ? globalN + globalM : 5;
-
-        stepEvents.forEach(step => {
-            // Actual phase: cari transisi terakhir dengan ts <= step.ts
-            let actualPhase = 0;
-            for (let j = transitions.length - 1; j >= 0; j--) {
-                if (transitions[j].timestamp <= step.timestamp) {
-                    actualPhase = transitions[j].breathPhase;
-                    break;
-                }
-            }
-
-            // Skip langkah sebelum transisi napas pertama tercatat
-            if (actualPhase === 0) return;
-
-            // Reset posisi global saat IN baru dimulai (setiap cycle baru)
-            // agar posisi tidak drift akibat langkah yang terlewat sensor
-            const prevPhaseForStep = (() => {
-                for (let j = transitions.length - 1; j >= 0; j--) {
-                    if (transitions[j].timestamp <= step.timestamp) {
-                        // Cari transisi sebelumnya
-                        if (j > 0) return transitions[j - 1].breathPhase;
-                        return 0;
-                    }
-                }
-                return 0;
-            })();
-
-            // Expected phase dari posisi dalam pola
-            const posInCycle = globalStepCounter % globalCycleLen;
-            const expectedPhase = posInCycle < globalN ? 1 : -1;
-
-            totalSteps++;
-            if (actualPhase === expectedPhase) compliantSteps++;
-            globalStepCounter++;
-        });
+        // CATATAN PERBAIKAN: compliance sebelumnya dihitung per-langkah
+        // menggunakan globalStepCounter yang terus bertambah sepanjang
+        // sesi dan TIDAK PERNAH di-reset per siklus. Akibatnya, satu
+        // langkah yang terlewat sensor di tengah sesi menggeser perhitungan
+        // expectedPhase untuk SEMUA langkah setelahnya — padahal siklus
+        // napas pelari sendiri tidak pernah salah. Ini menyebabkan
+        // compliance bisa sangat berbeda dari persentase pola di histogram,
+        // padahal keduanya seharusnya menjawab pertanyaan yang sama:
+        // "berapa persen siklus napas saya tepat sesuai target pola?"
+        // Compliance sekarang dihitung per-SIKLUS (sama seperti
+        // analyzeOldFormat dan basis patternDistribution di bawah), bukan
+        // per-langkah — sehingga immune terhadap drift akibat sensor miss,
+        // dan akan selalu konsisten dengan persentase pola di histogram.
 
         cycles.forEach((cycle, cycleIdx) => {
             const { inStartTs, exStartTs, nextInStartTs, patternID } = cycle;
@@ -498,6 +467,14 @@ const analyzeNewFormat = (rawData) => {
             const MAX_STEPS_PER_PHASE = 4;
             if (inSteps.length > MAX_STEPS_PER_PHASE || exSteps.length > MAX_STEPS_PER_PHASE) {
                 return;
+            }
+
+            // Kepatuhan per-siklus: cycle harus persis sesuai target N:M.
+            // Lihat catatan perbaikan compliance di atas untuk rationale
+            // mengapa ini menggantikan pendekatan per-langkah sebelumnya.
+            totalCycles++;
+            if (inSteps.length === N && exSteps.length === M) {
+                matchCount++;
             }
 
 
@@ -559,7 +536,7 @@ const analyzeNewFormat = (rawData) => {
         });
 
         // === Aggregate metrics ===
-        const compliance = totalSteps > 0 ? Math.round((compliantSteps / totalSteps) * 100) : 0;
+        const compliance = totalCycles > 0 ? Math.round((matchCount / totalCycles) * 100) : 0;
 
         const avgLag = lags.length > 0
             ? Math.round(lags.reduce((sum, l) => sum + Math.abs(l), 0) / lags.length)
