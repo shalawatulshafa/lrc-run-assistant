@@ -200,8 +200,16 @@ const analyzeOldFormat = (rawData) => {
         const patternsArray = Array.from(session.targetPatternsUsed).map(id => convertPatternId(id));
         const sessionTargetPatternStr = patternsArray.join(" & ");
 
-        const rawCsvForSession = session.rawLines.length > 0
-            ? `${CSV_HEADER}\n${session.rawLines.join('\n')}`
+        // Sort by timestamp column before export — same fix as new format,
+        // see comment in analyzeNewFormat for full rationale.
+        const sortedRawLines = [...session.rawLines].sort((a, b) => {
+            const tsA = parseInt(a.split(',')[3], 10);
+            const tsB = parseInt(b.split(',')[3], 10);
+            return tsA - tsB;
+        });
+
+        const rawCsvForSession = sortedRawLines.length > 0
+            ? `${CSV_HEADER}\n${sortedRawLines.join('\n')}`
             : null;
 
         analyzedSessions.push({
@@ -550,8 +558,21 @@ const analyzeNewFormat = (rawData) => {
         const sessionTargetPatternStr = patternsArray.join(" & ");
 
         // Raw CSV (header + baris asli)
-        const rawCsvForSession = session.rawLines.length > 0
-            ? `${CSV_HEADER}\n${session.rawLines.join('\n')}`
+        //
+        // IMPORTANT: rawLines is pushed in raw FILE order (see push above),
+        // never sorted — unlike stepEvents/breathTransitions which are sorted
+        // before being used for metric calculation. That means metrics were
+        // already correct, but the exported rawCsv itself was still scrambled
+        // in firmware write order. Sort by the timestamp column (parts[3])
+        // here so the CSV a user downloads reads chronologically too.
+        const sortedRawLines = [...session.rawLines].sort((a, b) => {
+            const tsA = parseInt(a.split(',')[3], 10);
+            const tsB = parseInt(b.split(',')[3], 10);
+            return tsA - tsB;
+        });
+
+        const rawCsvForSession = sortedRawLines.length > 0
+            ? `${CSV_HEADER}\n${sortedRawLines.join('\n')}`
             : null;
 
         analyzedSessions.push({
