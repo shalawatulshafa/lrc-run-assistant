@@ -263,7 +263,14 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
   // _chartData hanya untuk sesi lama yang belum punya field ini — pada
   // fallback itu basisnya TIDAK akan persis sama dengan compliance, karena
   // _chartData sudah terfilter outlier sumbu-Y.
-  // Filter rule: hide kalau frequency <5% DAN <2 absolute count.
+  //
+  // Pola dengan frekuensi rendah (<5% DAN <2 absolute count) tidak lagi
+  // DIBUANG dari histogram — sebelumnya ini menyebabkan total persentase
+  // yang ditampilkan tidak mencapai 100% dan tidak match dengan compliance
+  // (mis. histogram basis 32 menampilkan 75% sementara compliance basis 33
+  // sebenarnya 73%, karena 1 siklus langka disembunyikan tanpa mengubah
+  // total). Sekarang pola langka digabung jadi satu bar "Lainnya", sehingga
+  // jumlah seluruh bar selalu 100% dan basisnya selalu sama dengan compliance.
   List<HistogramBar> _computeHistogramData() {
     final Map<String, int> counts;
     final int total;
@@ -286,14 +293,27 @@ class _DetailLariScreenState extends State<DetailLariScreen> {
     if (total == 0) return [];
 
     final List<HistogramBar> bars = [];
+    int otherCount = 0;
     counts.forEach((pattern, count) {
       final double pct = count / total * 100;
-      // Filter: <5% AND <2 cycles
-      if (count < 2 && pct < 5) return;
+      // Kelompokkan ke "Lainnya" daripada dibuang, supaya total tetap 100%
+      if (count < 2 && pct < 5) {
+        otherCount += count;
+        return;
+      }
       bars.add(HistogramBar(pattern: pattern, count: count, percentage: pct));
     });
 
     bars.sort((a, b) => b.count.compareTo(a.count));
+
+    if (otherCount > 0) {
+      bars.add(HistogramBar(
+        pattern: 'Lainnya',
+        count: otherCount,
+        percentage: otherCount / total * 100,
+      ));
+    }
+
     return bars;
   }
 
@@ -929,7 +949,9 @@ class HistogramPainter extends CustomPainter {
 
   // Warna sama dengan ChartPainter agar konsisten antar mode
   Color _getPatternColor(String pattern) {
+    if (pattern == 'Lainnya') return Colors.grey;
     if (pattern.contains('2:1')) return Colors.blue;
+    if (pattern.contains('2:3')) return Colors.amber;
     if (pattern.contains('2:2')) return Colors.green;
     if (pattern.contains('4:4')) return Colors.purple;
     if (pattern.contains('3:3')) return Colors.teal;

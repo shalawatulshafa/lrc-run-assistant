@@ -150,6 +150,16 @@ export const syncRun = async (req, res, next) => {
                 compliance: session.compliance,
                 duration: session.duration,
                 rawLrcData: session.rawLrcData,
+                // patternDistribution dihasilkan analyzeRunData() dengan
+                // basis yang sama dengan compliance (semua siklus, termasuk
+                // yang dikecualikan dari rawLrcData/grafik garis karena
+                // outlier guard sumbu-Y). Sebelumnya field ini TIDAK
+                // disimpan ke DB sama sekali, sehingga histogram di
+                // frontend selalu fallback ke basis rawLrcData yang lebih
+                // kecil — menyebabkan persentase histogram tidak pernah
+                // match dengan compliance, apa pun jalur fetch-nya
+                // (getRuns, getRunById, atau cache lokal).
+                patternDistribution: session.patternDistribution,
                 avgLrc: session.avgLrc,
                 rawCsv: session.rawCsv,
                 avgLag: session.avgLag,
@@ -166,6 +176,7 @@ export const syncRun = async (req, res, next) => {
                 compliance: session.compliance,
                 duration: session.duration,
                 rawLrcData: session.rawLrcData,
+                patternDistribution: session.patternDistribution,
                 avgLrc: session.avgLrc,
                 rawCsv: session.rawCsv,
                 avgLag: session.avgLag,

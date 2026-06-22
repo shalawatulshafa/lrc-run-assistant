@@ -31,6 +31,11 @@ model Run {
   avgSpm            Int
   compliance        Int
   rawLrcData        Json?
+  // Distribusi pola dari SEMUA siklus (basis sama dengan compliance),
+  // dipakai histogram di frontend. Berbeda dari rawLrcData yang sudah
+  // terfilter outlier sumbu-Y untuk keperluan chart garis. Null untuk
+  // sesi lama sebelum field ini ditambahkan.
+  patternDistribution Json?
   rawCsv            String?
   // Metrik baru dari format CSV dengan step=0 transition rows.
   // Null untuk data lari lama (sebelum firmware update yang emit step=0).
